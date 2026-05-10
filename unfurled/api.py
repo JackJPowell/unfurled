@@ -9,6 +9,8 @@ consume this layer.
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import logging
 from enum import StrEnum
 from typing import Any
@@ -75,6 +77,24 @@ class CoreAPI:
         if self._session and not self._external_session:
             await self._session.close()
             self._session = None
+
+    def __del__(self) -> None:
+        """Best-effort cleanup when the session is GC'd without being explicitly closed.
+
+        If the event loop is still running (e.g. GC triggered mid-coroutine),
+        the close is scheduled as a task.  Otherwise a temporary loop is created
+        just to drain the session.
+        """
+        if self._external_session or not self._session or self._session.closed:
+            return
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(self.close())
+        except RuntimeError:
+            with contextlib.suppress(Exception):
+                asyncio.run(self.close())
+        except Exception:
+            pass
 
     async def _ensure_session(self) -> aiohttp.ClientSession:
         if self._session is None or self._session.closed:

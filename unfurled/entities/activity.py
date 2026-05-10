@@ -9,8 +9,8 @@ from typing import TYPE_CHECKING
 from ..helpers.models import ActivityState
 
 if TYPE_CHECKING:
-    from .media_player import MediaPlayerEntity
     from ..remote import Remote
+    from .media_player import MediaPlayerEntity
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -21,7 +21,7 @@ class Activity:
     def __init__(self, data: dict, remote: Remote) -> None:
         self._remote = remote
         self._id: str = data["entity_id"]
-        self._name: str = remote.get_text_for_locale(
+        self._name: str = remote.settings.get_text_for_locale(
             data.get("name", {}), default_text="Unnamed Activity"
         )
         self._state: str = data.get("attributes", {}).get("state", ActivityState.OFF)

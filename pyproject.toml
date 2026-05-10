@@ -70,13 +70,14 @@ warn_unused_ignores = true
 disallow_untyped_defs = true
 check_untyped_defs = true
 no_implicit_optional = true
+exclude = ["tests/*", "pyUnfoldedCircle/*"]
 
 [tool.pylint.main]
 ignore = ["tests, README.md, test/*"]
 
 [tool.pylint.messages_control]
 disable = [
-    "protected-access",   # W0212 – intentional cross-module sub-object access
+    "protected-access",   # W0212 - intentional cross-module sub-object access
     "broad-exception-caught",
 ] 
 

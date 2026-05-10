@@ -1,9 +1,9 @@
 """WebSocket client layer for Unfolded Circle devices.
 
 Provides:
-- ``WebSocketClient`` – base class with auto-reconnect, callback dispatch.
-- ``RemoteWebSocketClient`` – connects to the remote using an API key.
-- ``DockWebSocketClient`` – connects to the dock using a password/token.
+- ``WebSocketClient`` - base class with auto-reconnect, callback dispatch.
+- ``RemoteWebSocketClient`` - connects to the remote using an API key.
+- ``DockWebSocketClient`` - connects to the dock using a password/token.
 """
 
 from __future__ import annotations
@@ -14,6 +14,7 @@ import json
 import logging
 from collections.abc import Callable, Coroutine
 from typing import Any
+from urllib.parse import urlparse
 
 import websockets
 from websockets.exceptions import ConnectionClosed
@@ -93,7 +94,7 @@ class WebSocketClient:
         Safe to call from any task.  Silently drops if not connected.
         """
         if not self._ws:
-            _LOGGER.debug("ws send ignored – not connected (%s)", self._endpoint)
+            _LOGGER.debug("ws send ignored - not connected (%s)", self._endpoint)
             return
         message = json.dumps(payload) if isinstance(payload, dict) else payload
         try:
@@ -194,8 +195,6 @@ class RemoteWebSocketClient(WebSocketClient):
         *,
         reconnect_delay: float = _RECONNECT_DELAY,
     ) -> None:
-        from urllib.parse import urlparse
-
         parsed = urlparse(api_url)
         scheme = "wss" if parsed.scheme == "https" else "ws"
         endpoint = f"{scheme}://{parsed.netloc}/ws"
@@ -241,8 +240,8 @@ class DockWebSocketClient(WebSocketClient):
             data = json.loads(first_msg)
             if data.get("type") == "auth_required":
                 await self.send({"type": "auth", "token": self._password})
-        except asyncio.TimeoutError:
-            pass  # no auth challenge – proceed
+        except TimeoutError:
+            pass  # no auth challenge - proceed
         except Exception:
             pass
 

@@ -102,9 +102,9 @@ class TestRemoteInit:
             setup_default_api_mocks(m)
             await remote.init()
 
-        assert remote.identity.hostname == "remote-two"
-        assert remote.identity.mac_address == "aa:bb:cc:dd:ee:ff"
-        assert remote.sw_version == "2.3.0"
+        assert remote.device.hostname == "remote-two"
+        assert remote.device.mac_address == "aa:bb:cc:dd:ee:ff"
+        assert remote.device.sw_version == "2.3.0"
 
     async def test_init_populates_battery(self, remote: Remote):
         with aioresponses() as m:
@@ -154,7 +154,7 @@ class TestRemoteInit:
             setup_default_api_mocks(m)
             await remote.init()
 
-        assert remote.name == "Living Room Remote"
+        assert remote.device.name == "Living Room Remote"
 
 
 class TestWsMessageHandling:
@@ -165,12 +165,12 @@ class TestWsMessageHandling:
         assert remote.state.battery_level == 55
         assert remote.state.battery_status == "CHARGING"
         assert remote.state.is_charging is True
-        assert remote.last_update_type == UpdateType.BATTERY
+        assert remote._last_update_type == UpdateType.BATTERY
 
     async def test_ambient_light_updates_state(self, remote: Remote):
         await remote._handle_ws_message(ws_ambient_light_message(intensity=300))
         assert remote.state.ambient_light_level == 300
-        assert remote.last_update_type == UpdateType.AMBIENT_LIGHT
+        assert remote._last_update_type == UpdateType.AMBIENT_LIGHT
 
     async def test_activity_on_message_updates_activity_state(self, remote: Remote):
         from unfurled.entities.activity import Activity
@@ -183,7 +183,7 @@ class TestWsMessageHandling:
 
         await remote._handle_ws_message(ws_activity_on_message("act-001", "ON"))
         assert remote.activities[0].is_on is True
-        assert remote.last_update_type == UpdateType.ACTIVITY
+        assert remote._last_update_type == UpdateType.ACTIVITY
 
     async def test_activity_off_message_updates_activity_state(self, remote: Remote):
         from unfurled.entities.activity import Activity
@@ -200,7 +200,7 @@ class TestWsMessageHandling:
     async def test_configuration_change_updates_display_brightness(self, remote: Remote):
         await remote._handle_ws_message(ws_configuration_change_message(display_brightness=75))
         assert remote.settings.display.brightness == 75
-        assert remote.last_update_type == UpdateType.CONFIGURATION
+        assert remote._last_update_type == UpdateType.CONFIGURATION
 
     async def test_power_mode_message_updates_mode(self, remote: Remote):
         await remote._handle_ws_message(ws_power_mode_message("SUSPEND"))
@@ -208,12 +208,12 @@ class TestWsMessageHandling:
 
     async def test_software_update_start_sets_in_progress(self, remote: Remote):
         await remote._handle_ws_message(ws_software_update_start())
-        assert remote.update_info.in_progress is True
-        assert remote.last_update_type == UpdateType.SOFTWARE
+        assert remote.system.update_info.in_progress is True
+        assert remote._last_update_type == UpdateType.SOFTWARE
 
     async def test_software_update_progress(self, remote: Remote):
         await remote._handle_ws_message(ws_software_update_progress("PROGRESS", current_percent=70))
-        assert remote.update_info.update_percent == 70
+        assert remote.system.update_info.update_percent == 70
 
     async def test_ir_learning_routes_to_dock(self, remote: Remote):
         from unfurled.dock import Dock
@@ -252,37 +252,37 @@ class TestSystemCommands:
         remote._wake_if_asleep = False
         with aioresponses() as m:
             m.post(f"{BASE_URL}system?cmd=STANDBY", status=200, payload=None)
-            await remote.post_system_command("STANDBY")
+            await remote.system.send_command("STANDBY")
 
     async def test_invalid_system_command_raises(self, remote: Remote):
         with pytest.raises(SystemCommandNotFound):
-            await remote.post_system_command("INVALID_CMD")
+            await remote.system.send_command("INVALID_CMD")
 
 
 class TestGetTextForLocale:
     def test_returns_exact_locale_match(self, remote: Remote):
         text = {"en_UK": "Hello UK", "en_US": "Hello US"}
-        assert remote.get_text_for_locale(text) == "Hello US"
+        assert remote.settings.get_text_for_locale(text) == "Hello US"
 
     def test_falls_back_to_language_code(self, remote: Remote):
         text = {"en": "Hello"}
-        assert remote.get_text_for_locale(text) == "Hello"
+        assert remote.settings.get_text_for_locale(text) == "Hello"
 
     def test_returns_default_for_empty_dict(self, remote: Remote):
-        assert remote.get_text_for_locale({}, default_text="Default") == "Default"
+        assert remote.settings.get_text_for_locale({}, default_text="Default") == "Default"
 
     def test_returns_string_directly(self, remote: Remote):
-        assert remote.get_text_for_locale("Plain text") == "Plain text"
+        assert remote.settings.get_text_for_locale("Plain text") == "Plain text"
 
     def test_returns_default_for_none(self, remote: Remote):
-        assert remote.get_text_for_locale(None, default_text="Fallback") == "Fallback"
+        assert remote.settings.get_text_for_locale(None, default_text="Fallback") == "Fallback"
 
 
 class TestWakeOnLan:
     async def test_wake_if_asleep_with_wol_enabled(self, remote: Remote):
         remote._wake_if_asleep = True
         remote.settings.network.wifi.wake_on_wlan = True
-        remote.identity.is_simulator = False
+        remote.device.is_simulator = False
 
         with patch.object(remote, "wake", new=AsyncMock(return_value=True)):
             await remote._ensure_awake()  # Should not raise
@@ -290,7 +290,7 @@ class TestWakeOnLan:
     async def test_ensure_awake_raises_when_wake_fails(self, remote: Remote):
         remote._wake_if_asleep = True
         remote.settings.network.wifi.wake_on_wlan = True
-        remote.identity.is_simulator = False
+        remote.device.is_simulator = False
 
         with patch.object(remote, "wake", new=AsyncMock(return_value=False)):
             with pytest.raises(RemoteIsSleeping):

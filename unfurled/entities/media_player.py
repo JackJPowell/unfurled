@@ -1,4 +1,4 @@
-"""MediaPlayerEntity – a media player entity hosted on the remote."""
+"""MediaPlayerEntity - a media player entity hosted on the remote."""
 
 from __future__ import annotations
 
@@ -7,8 +7,8 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from .activity import Activity
     from ..remote import Remote
+    from .activity import Activity
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -124,7 +124,7 @@ class MediaPlayerEntity:
 
     @property
     def volume(self) -> float:
-        """Current volume level (0.0 – 1.0)."""
+        """Current volume level (0.0 - 1.0)."""
         return self._volume
 
     @property
@@ -231,7 +231,7 @@ class MediaPlayerEntity:
         await self._cmd_via_activity("media_player.mute_toggle", "volume_mute_command")
 
     async def volume_set(self, volume: int) -> None:
-        """Set the volume to an absolute level (0–100)."""
+        """Set the volume to an absolute level (0-100)."""
         await self._cmd("media_player.volume", {"volume": int(volume)})
 
     async def play_pause(self) -> None:

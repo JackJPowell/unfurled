@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
@@ -113,7 +114,7 @@ class Dock:
         api_key: str,
         remote_endpoint: str,
         remote_configuration_url: str = "",
-    ) -> "Dock":
+    ) -> Dock:
         """Create a Dock from the dict returned by ``GET /docks``."""
         return cls(
             dock_id=data.get("entity_id", ""),
@@ -270,7 +271,7 @@ class Dock:
             reconnect_delay: Seconds between reconnection attempts.
         """
         if not self._ws_url:
-            _LOGGER.warning("Dock %s has no ws_url – cannot open WebSocket", self._id)
+            _LOGGER.warning("Dock %s has no ws_url - cannot open WebSocket", self._id)
             return
 
         self._ws_password = password
@@ -291,7 +292,6 @@ class Dock:
 
     async def _handle_ws_message(self, raw: str) -> None:
         """Update dock state from received WebSocket messages."""
-        import json
 
         try:
             data = json.loads(raw)
@@ -338,7 +338,7 @@ class Dock:
         """Set the dock LED brightness.
 
         Args:
-            brightness: Brightness level 0–100.
+            brightness: Brightness level 0-100.
         """
         await self.send_command(DockCommand.SET_LED_BRIGHTNESS, brightness=brightness)
         self._led_brightness = brightness

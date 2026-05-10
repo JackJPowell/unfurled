@@ -1,4 +1,4 @@
-"""unfurled – Unfolded Circle Python API library.
+"""unfurled - Unfolded Circle Python API library.
 
 Public interface::
 
@@ -34,7 +34,7 @@ from .helpers.models import (
     ActivityState,
     BluetoothSettings,
     ButtonSettings,
-    DeviceIdentity,
+    DeviceInfo,
     DisplaySettings,
     Feature,
     HapticSettings,
@@ -49,7 +49,6 @@ from .helpers.models import (
     RemoteStats,
     SoftwareUpdateSettings,
     SoundSettings,
-    SystemInfo,
     UpdateInfo,
     UpdateType,
     VoiceSettings,
@@ -61,6 +60,7 @@ from .submodules.authentication import Authentication
 from .submodules.base import RemoteModule
 from .submodules.integrations import Integrations
 from .submodules.settings import Settings
+from .submodules.systems import System
 
 __version__ = "0.1.0"
 
@@ -74,6 +74,7 @@ __all__ = [
     "Authentication",
     "Integrations",
     "Settings",
+    "System",
     "IR",
     # Domain
     "Activity",
@@ -96,10 +97,9 @@ __all__ = [
     "MediaPlayerState",
     "PowerMode",
     "UpdateType",
-    "SystemInfo",
+    "DeviceInfo",
     "UpdateInfo",
     "Settings",
-    "DeviceIdentity",
     "RemoteState",
     "RemoteFeatureFlags",
     "RemoteStats",

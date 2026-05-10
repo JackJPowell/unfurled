@@ -58,7 +58,7 @@ def _choose(options: list[str], prompt: str = "Choose") -> int:
 
 async def _connect() -> Remote:
     """Discover or manually enter a remote address, then authenticate."""
-    print("\n=== unfurled – interactive tester ===\n")
+    print("\n=== unfurled - interactive tester ===\n")
 
     print("Discovering remotes on the local network (3 s) …")
     found = await discover_remotes(timeout=3)
@@ -86,13 +86,13 @@ async def _connect() -> Remote:
     try:
         await remote.init()
     except AuthenticationError:
-        print("Authentication failed – check your API key / PIN.")
+        print("Authentication failed - check your API key / PIN.")
         sys.exit(1)
     except Exception as exc:
         print(f"Connection error: {exc}")
         sys.exit(1)
 
-    print(f"\nConnected to: {remote.name}  (FW {remote.sw_version})")
+    print(f"\nConnected to: {remote.device.name}  (FW {remote.device.sw_version})")
     return remote
 
 
@@ -105,15 +105,15 @@ async def _show_summary(remote: Remote) -> None:
     print("\n--- Device summary ---")
     pp(
         {
-            "name": remote.name,
-            "model": remote.info.model_name,
-            "serial": remote.info.serial_number,
-            "hw_revision": remote.info.hw_revision,
-            "firmware": remote.sw_version,
-            "latest_firmware": remote.update_info.latest_version,
-            "update_available": remote.update_info.available,
-            "memory_total_mb": remote.memory_total,
-            "storage_total_mb": remote.storage_total,
+            "name": remote.device.name,
+            "model": remote.device.model_name,
+            "serial": remote.device.serial_number,
+            "hw_revision": remote.device.hw_revision,
+            "firmware": remote.device.sw_version,
+            "latest_firmware": remote.system.update_info.latest_version,
+            "update_available": remote.system.update_info.available,
+            "memory_total_mb": remote.system.stats.memory_total,
+            "storage_total_mb": remote.system.stats.storage_total,
             "wifi_enabled": remote.settings.network.wifi_enabled,
             "bt_enabled": remote.settings.network.bt_enabled,
         }
@@ -197,7 +197,7 @@ async def _raw_api_call(remote: Remote) -> None:
 async def _check_update(remote: Remote) -> None:
     print("Checking for firmware update …")
     try:
-        result = await remote.force_update_check()
+        result = await remote.system.force_update_check()
         pp(result)
     except Exception as exc:
         print(f"Error: {exc}")
@@ -230,7 +230,7 @@ MENU: list[tuple[str, Any]] = [
 
 
 async def main() -> None:
-    """Entry point – connect to a remote and run the interactive menu."""
+    """Entry point - connect to a remote and run the interactive menu."""
     remote = await _connect()
 
     while True:

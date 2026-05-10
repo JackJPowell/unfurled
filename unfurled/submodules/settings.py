@@ -1,4 +1,4 @@
-"""Settings sub-object – configuration for the remote device."""
+"""Settings sub-object - configuration for the remote device."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ from packaging.version import Version
 from ..helpers.models import (
     BluetoothSettings,
     ButtonSettings,
+    ConfigurationChangeEvent,
     DisplaySettings,
     Feature,
     HapticSettings,
@@ -18,6 +19,7 @@ from ..helpers.models import (
     ProfileSettings,
     SoftwareUpdateSettings,
     SoundSettings,
+    UpdateType,
     VoiceSettings,
 )
 from .base import RemoteModule
@@ -58,6 +60,249 @@ class Settings(RemoteModule):
     # Update methods
     # ------------------------------------------------------------------
 
+    @property
+    def internal_ir_enabled(self) -> bool:
+        """Return ``True`` if the remote's built-in IR emitter is enabled."""
+        return any(f.id == "internal_ir" and f.enabled for f in self.features)
+
+    # ------------------------------------------------------------------
+    # Locale helper
+    # ------------------------------------------------------------------
+
+    def get_text_for_locale(
+        self,
+        text: dict | str | None,
+        *,
+        locale: str | None = None,
+        default_text: str = "Undefined",
+    ) -> str:
+        """Return the best match for the current locale from a text dict."""
+        if not text:
+            return default_text
+        if isinstance(text, str):
+            return text
+
+        locale = locale or self.localization.language_code
+
+        for candidate in (locale, locale.split("_")[0] if "_" in locale else None, "en_US", "en"):
+            if candidate and text.get(candidate):
+                return text[candidate]
+
+        for v in text.values():
+            if v:
+                return v
+
+        return default_text
+
+    def _on_configuration_change(self, event: ConfigurationChangeEvent) -> None:
+        state = event.new_state
+
+        if display := state.get("display"):
+            self.display.auto_brightness = display.get(
+                "auto_brightness", self.display.auto_brightness
+            )
+            self.display.brightness = display.get("brightness", self.display.brightness)
+
+        if button := state.get("button"):
+            self.button.auto_brightness = button.get("auto_brightness", self.button.auto_brightness)
+            self.button.brightness = button.get("brightness", self.button.brightness)
+            if "RGB_COLOR" in self._remote.system.flags.button_features:
+                self.button.static_color = button.get("static_color")
+
+        if sound := state.get("sound"):
+            self.sound.enabled = sound.get("enabled", self.sound.enabled)
+            self.sound.volume = sound.get("volume", self.sound.volume)
+
+        if haptic := state.get("haptic"):
+            self.haptic.enabled = haptic.get("enabled", self.haptic.enabled)
+
+        if sw := state.get("software_update"):
+            self.software_update.check_for_updates = sw.get(
+                "check_for_updates", self.software_update.check_for_updates
+            )
+            self.software_update.auto_update = sw.get(
+                "auto_update", self.software_update.auto_update
+            )
+            self.software_update.ota_window_start = sw.get(
+                "ota_window_start", self.software_update.ota_window_start
+            )
+            self.software_update.ota_window_end = sw.get(
+                "ota_window_end", self.software_update.ota_window_end
+            )
+            self.software_update.channel = sw.get("channel", self.software_update.channel)
+
+        if ps := state.get("power_saving"):
+            self.power_saving.display_off_sec = ps.get(
+                "display_off_sec", self.power_saving.display_off_sec
+            )
+            self.power_saving.wakeup_sensitivity = ps.get(
+                "wakeup_sensitivity", self.power_saving.wakeup_sensitivity
+            )
+            self.power_saving.standby_sec = ps.get("standby_sec", self.power_saving.standby_sec)
+
+        if net := state.get("network"):
+            self.network.bt_enabled = bool(net.get("bt_enabled", self.network.bt_enabled))
+            self.network.wifi_enabled = bool(net.get("wifi_enabled", self.network.wifi_enabled))
+            wifi = net.get("wifi", {})
+            if wifi:
+                self.network.wifi.band = wifi.get("band", self.network.wifi.band)
+                self.network.wifi.scan_interval_sec = wifi.get(
+                    "scan_interval_sec", self.network.wifi.scan_interval_sec
+                )
+                self.network.wifi.ipv4_type = wifi.get("ipv4_type", self.network.wifi.ipv4_type)
+            wol = wifi.get("wake_on_wlan") or net.get("wake_on_wlan") or {}
+            if wol:
+                self.network.wifi.wake_on_wlan = bool(
+                    wol.get("enabled", self.network.wifi.wake_on_wlan)
+                )
+
+        if loc := state.get("localization"):
+            self.localization.language_code = loc.get(
+                "language_code", self.localization.language_code
+            )
+            self.localization.country_code = loc.get("country_code", self.localization.country_code)
+            self.localization.time_zone = loc.get("time_zone", self.localization.time_zone)
+            self.localization.time_format_24h = bool(
+                loc.get("time_format_24h", self.localization.time_format_24h)
+            )
+            self.localization.measurement_unit = loc.get(
+                "measurement_unit", self.localization.measurement_unit
+            )
+
+        if bt := state.get("bt"):
+            self.bluetooth.peripheral_connections = bt.get(
+                "peripheral_connections", self.bluetooth.peripheral_connections
+            )
+            self.bluetooth.advertisement_name = bt.get(
+                "advertisement_name", self.bluetooth.advertisement_name
+            )
+            self.bluetooth.enable_hci_log = bool(
+                bt.get("enable_hci_log", self.bluetooth.enable_hci_log)
+            )
+            self.bluetooth.enable_debug_port = bool(
+                bt.get("enable_debug_port", self.bluetooth.enable_debug_port)
+            )
+            self.bluetooth.version = bt.get("version", self.bluetooth.version)
+
+        if device := state.get("device"):
+            self._remote.device.name = device.get("name", "")
+
+        if profile := state.get("profile"):
+            self.profile.has_admin_pin = bool(
+                profile.get("has_admin_pin", self.profile.has_admin_pin)
+            )
+
+        if voice := state.get("voice"):
+            self.voice.microphone = bool(voice.get("microphone", self.voice.microphone))
+            self.voice.voice_assistant = voice.get("voice_assistant", self.voice.voice_assistant)
+
+        if features := state.get("features"):
+            self.features = [
+                Feature(
+                    id=f.get("id", ""),
+                    enabled=bool(f.get("enabled", False)),
+                    title=f.get("title", {}),
+                    description=f.get("description", {}),
+                    help_url=f.get("help_url", ""),
+                )
+                for f in features
+            ]
+
+        self._remote._last_update_type = UpdateType.CONFIGURATION
+
+    async def _fetch_configuration(self) -> None:
+        """Fetch and parse the full ``GET /cfg`` response into ``self.settings``."""
+        data = await self._api.get_configuration()
+
+        # Device
+        device = data.get("device", {})
+        self._remote.device.name = device.get("name", "")
+
+        # Display
+        display = data.get("display", {})
+        self.display.auto_brightness = bool(display.get("auto_brightness", False))
+        self.display.brightness = display.get("brightness", 50)
+
+        # Button
+        button = data.get("button", {})
+        self.button.auto_brightness = bool(button.get("auto_brightness", False))
+        self.button.brightness = button.get("brightness", 50)
+        self.button.static_color = button.get("static_color")
+
+        # Sound
+        sound = data.get("sound", {})
+        self.sound.enabled = bool(sound.get("enabled", True))
+        self.sound.volume = sound.get("volume", 50)
+
+        # Haptic
+        haptic = data.get("haptic", {})
+        self.haptic.enabled = bool(haptic.get("enabled", True))
+
+        # Power saving
+        ps = data.get("power_saving", {})
+        self.power_saving.display_off_sec = ps.get("display_off_sec", 30)
+        self.power_saving.wakeup_sensitivity = ps.get("wakeup_sensitivity", 2)
+        self.power_saving.standby_sec = ps.get("standby_sec", 900)
+
+        # Network
+        net = data.get("network", {})
+        self.network.bt_enabled = bool(net.get("bt_enabled", True))
+        self.network.wifi_enabled = bool(net.get("wifi_enabled", True))
+        wifi = net.get("wifi", {})
+        self.network.wifi.band = wifi.get("band", "auto")
+        self.network.wifi.scan_interval_sec = wifi.get("scan_interval_sec", 15)
+        self.network.wifi.ipv4_type = wifi.get("ipv4_type", "DHCP")
+        # wake_on_wlan can appear at wifi level or network level
+        wol = wifi.get("wake_on_wlan") or net.get("wake_on_wlan") or {}
+        self.network.wifi.wake_on_wlan = bool(wol.get("enabled", False))
+        bt_net = net.get("bt", {})
+        self.network.bt_address = bt_net.get("address", "")
+
+        # Software update
+        sw = data.get("software_update", {})
+        self.software_update.check_for_updates = bool(sw.get("check_for_updates", True))
+        self.software_update.auto_update = bool(sw.get("auto_update", False))
+        self.software_update.ota_window_start = sw.get("ota_window_start", "02:00:00")
+        self.software_update.ota_window_end = sw.get("ota_window_end", "05:00:00")
+        self.software_update.channel = sw.get("channel", "STABLE")
+
+        # Localization
+        loc = data.get("localization", {})
+        self.localization.language_code = loc.get("language_code", "en_US")
+        self.localization.country_code = loc.get("country_code", "US")
+        self.localization.time_zone = loc.get("time_zone", "UTC")
+        self.localization.time_format_24h = bool(loc.get("time_format_24h", True))
+        self.localization.measurement_unit = loc.get("measurement_unit", "METRIC")
+
+        # Bluetooth
+        bt = data.get("bt", {})
+        self.bluetooth.peripheral_connections = bt.get("peripheral_connections", 1)
+        self.bluetooth.advertisement_name = bt.get("advertisement_name", "")
+        self.bluetooth.enable_hci_log = bool(bt.get("enable_hci_log", False))
+        self.bluetooth.enable_debug_port = bool(bt.get("enable_debug_port", False))
+        self.bluetooth.version = bt.get("version", "")
+
+        # Profile
+        profile = data.get("profile", {})
+        self.profile.has_admin_pin = bool(profile.get("has_admin_pin", False))
+
+        # Voice
+        voice = data.get("voice", {})
+        self.voice.microphone = bool(voice.get("microphone", False))
+        self.voice.voice_assistant = voice.get("voice_assistant", {})
+
+        # Features
+        self.features = [
+            Feature(
+                id=f.get("id", ""),
+                enabled=bool(f.get("enabled", False)),
+                title=f.get("title", {}),
+                description=f.get("description", {}),
+                help_url=f.get("help_url", ""),
+            )
+            for f in data.get("features", [])
+        ]
+
     async def update_display(
         self,
         *,
@@ -68,7 +313,7 @@ class Settings(RemoteModule):
 
         Args:
             auto_brightness: Enable or disable automatic brightness adjustment.
-            brightness: Display brightness level (0–100).
+            brightness: Display brightness level (0-100).
         """
         body: dict = {
             "auto_brightness": self.display.auto_brightness,
@@ -93,7 +338,7 @@ class Settings(RemoteModule):
 
         Args:
             auto_brightness: Enable or disable automatic button brightness.
-            brightness: Button brightness level (0–100).
+            brightness: Button brightness level (0-100).
             static_color: RGB colour dict for static button illumination.
         """
         await self._ensure_awake()
@@ -109,7 +354,7 @@ class Settings(RemoteModule):
             body["brightness"] = brightness
         if (
             static_color is not None
-            and "RGB_COLOR" in self._remote.flags.button_features
+            and "RGB_COLOR" in self._remote.system.flags.button_features
             and static_color
         ):
             body["static_color"] = static_color
@@ -128,7 +373,7 @@ class Settings(RemoteModule):
 
         Args:
             enabled: Enable or disable UI sound effects.
-            volume: Sound effects volume level (0–100).
+            volume: Sound effects volume level (0-100).
         """
         await self._ensure_awake()
         body: dict = {
@@ -166,9 +411,9 @@ class Settings(RemoteModule):
         """Update power-saving settings.
 
         Args:
-            display_timeout: Seconds before display turns off (0–60).
-            wakeup_sensitivity: Wake-up sensitivity level (0–3).
-            sleep_timeout: Seconds before entering standby (0–1800).
+            display_timeout: Seconds before display turns off (0-60).
+            wakeup_sensitivity: Wake-up sensitivity level (0-3).
+            sleep_timeout: Seconds before entering standby (0-1800).
         """
         await self._ensure_awake()
         body: dict = {
@@ -212,8 +457,8 @@ class Settings(RemoteModule):
             body["wifi_enabled"] = wifi_enabled
         if (
             wake_on_wlan is not None
-            and self._remote.identity.sw_version
-            and Version(self._remote.identity.sw_version) >= Version("2.0.0")
+            and self._remote.device.sw_version
+            and Version(self._remote.device.sw_version) >= Version("2.0.0")
         ):
             body["wake_on_wlan"] = {"enabled": wake_on_wlan}
         await self._api.patch_network_settings(body)

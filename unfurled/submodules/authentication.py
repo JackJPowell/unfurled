@@ -1,9 +1,9 @@
-"""Authentication sub-object – API keys and external system tokens."""
+"""Authentication sub-object - API keys and external system tokens."""
 
 from __future__ import annotations
 
-from .base import RemoteModule
 from ..helpers.exceptions import ApiKeyError, ApiKeyNotFound, HTTPError
+from .base import RemoteModule
 
 _AUTH_APIKEY_NAME = "pyUnfoldedCircle"
 

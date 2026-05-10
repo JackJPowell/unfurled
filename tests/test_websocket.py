@@ -89,7 +89,7 @@ class TestDockWebSocketClient:
             yield challenge_msg
 
         with patch.object(mock_ws, "__aiter__", side_effect=lambda: fake_iter(mock_ws)):
-            # Call _on_connected – it should send the auth response
+            # Call _on_connected - it should send the auth response
             task = asyncio.create_task(client._on_connected(mock_ws))
             await asyncio.sleep(0)  # allow co-routine to start
             task.cancel()

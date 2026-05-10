@@ -1,10 +1,10 @@
-"""Integrations sub-object – integration instances and driver lifecycle."""
+"""Integrations sub-object - integration instances and driver lifecycle."""
 
 from __future__ import annotations
 
 from ..api import IntegrationInstanceCommand
-from .base import RemoteModule
 from ..helpers.exceptions import IntegrationNotFound
+from .base import RemoteModule
 
 
 class Integrations(RemoteModule):

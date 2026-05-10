@@ -219,14 +219,28 @@ class RemoteSettings:
 
 
 @dataclass
-class SystemInfo:
-    """Static system information from ``GET /sys/info``."""
+class DeviceInfo:
+    """Combined static and runtime device information.
 
+    Populated during :meth:`~unfurled.remote.Remote.init` from the system-info
+    and pub/version endpoints.  Hardware details (model, revision) and runtime
+    identity (name, IP, firmware version) live together here.
+    """
+
+    # Hardware / factory info (from GET /system)
     _model_name: str = field(default="", repr=False)
     model_number: str = ""
     serial_number: str = ""
     _hw_revision: str = field(default="", repr=False)
     manufacturer: str = "Unfolded Circle"
+
+    # Runtime identity)
+    _name: str = field(default="", repr=False)
+    hostname: str = ""
+    mac_address: str = ""
+    ip_address: str = ""
+    _sw_version: str = field(default="", repr=False)
+    is_simulator: bool | None = None
 
     @property
     def model_name(self) -> str:
@@ -257,17 +271,23 @@ class SystemInfo:
     def hw_revision(self, value: str) -> None:
         self._hw_revision = value
 
+    @property
+    def name(self) -> str:
+        """Human-friendly name for the remote, if available; otherwise a generic fallback."""
+        return self._name or "Unfolded Circle Remote"
 
-@dataclass
-class DeviceIdentity:
-    """Runtime-resolved identity fields (populated after ``init()``)."""
+    @name.setter
+    def name(self, value: str) -> None:
+        self._name = value
 
-    name: str = ""
-    hostname: str = ""
-    mac_address: str = ""
-    ip_address: str = ""
-    sw_version: str = ""
-    is_simulator: bool | None = None
+    @property
+    def sw_version(self) -> str:
+        """Software version of the remote, if available."""
+        return self._sw_version or "N/A"
+
+    @sw_version.setter
+    def sw_version(self, value: str) -> None:
+        self._sw_version = value
 
 
 @dataclass
@@ -281,7 +301,6 @@ class RemoteState:
     power_mode: str = PowerMode.NORMAL
     online: bool = True
     is_wireless_charging: bool = False
-    standby_inhibitors: list[dict] = field(default_factory=list)
 
 
 @dataclass
@@ -299,13 +318,49 @@ class RemoteFeatureFlags:
 class RemoteStats:
     """System resource statistics from ``GET /pub/status``."""
 
-    memory_total: float = 0.0
-    memory_available: float = 0.0
-    storage_total: float = 0.0
-    storage_available: float = 0.0
+    _memory_total: float = 0.0
+    _memory_available: float = 0.0
+    _storage_total: float = 0.0
+    _storage_available: float = 0.0
     cpu_load_one: float = 0.0
     cpu_load_five: float = 0.0
     cpu_load_fifteen: float = 0.0
+
+    @property
+    def memory_available(self) -> int:
+        """Available memory on the remote."""
+        return int(round(self._memory_available))
+
+    @property
+    def storage_available(self) -> int:
+        """Available storage on the remote."""
+        return int(round(self._storage_available))
+
+    @memory_available.setter
+    def memory_available(self, value: float) -> None:
+        self._memory_available = value
+
+    @storage_available.setter
+    def storage_available(self, value: float) -> None:
+        self._storage_available = value
+
+    @property
+    def memory_total(self) -> int:
+        """Total RAM in MiB."""
+        return int(round(self._memory_total))
+
+    @property
+    def storage_total(self) -> int:
+        """Total user-data storage in MiB."""
+        return int(round(self._storage_total))
+
+    @memory_total.setter
+    def memory_total(self, value: float) -> None:
+        self._memory_total = value
+
+    @storage_total.setter
+    def storage_total(self, value: float) -> None:
+        self._storage_total = value
 
 
 @dataclass
@@ -481,7 +536,7 @@ def _parse_entity_change(
     if entity_type == "activity":
         state = attributes.get("state", "")
 
-        # Activity is sequencing through its "on" steps – extract entity link
+        # Activity is sequencing through its "on" steps - extract entity link
         if state == "RUNNING":
             try:
                 step = attributes["step"]

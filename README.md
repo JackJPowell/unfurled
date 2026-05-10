@@ -55,7 +55,7 @@ async def main():
 
     # List activities
     for act in remote.activities:
-        print(act.name, "–", "ON" if act.is_on else "off")
+        print(act.name, "-", "ON" if act.is_on else "off")
 
     # Turn on an activity
     await remote.find_activity("my-activity-id").turn_on()
@@ -110,7 +110,7 @@ configuration, activities, entities, docks, IR emitters, update info.
 | `available_update` | `True` when an update is ready |
 | `settings.network.wifi_enabled` | Wi-Fi radio state |
 | `settings.network.bt_enabled` | Bluetooth radio state |
-| `settings.display.brightness` | Display brightness (0–100) |
+| `settings.display.brightness` | Display brightness (0-100) |
 | `settings.power_saving.standby_sec` | Display sleep timeout (seconds) |
 | `activities` | `list[Activity]` |
 | `docks` | `list[Dock]` |
