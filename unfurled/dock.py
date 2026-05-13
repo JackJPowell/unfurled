@@ -73,7 +73,6 @@ class Dock:
         # Update state
         self.system = System(self)
         self.settings = Settings()
-        self.state = DockState()
 
         self._learned_code: dict = {}
 
