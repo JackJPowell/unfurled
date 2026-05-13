@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import json
+from unittest.mock import AsyncMock
+
 import pytest
 from aioresponses import aioresponses
-from unittest.mock import AsyncMock, MagicMock, patch
 
 from unfurled.dock import Dock
 from unfurled.helpers.models import DockCommand
-
 
 BASE_URL = "http://192.168.1.10/api/"
 API_KEY = "test-key"

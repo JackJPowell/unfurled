@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
-from unittest.mock import AsyncMock, MagicMock, call, patch
-
-import pytest
+from unittest.mock import AsyncMock, patch
 
 from unfurled.helpers.websocket import DockWebSocketClient, RemoteWebSocketClient, WebSocketClient
 
@@ -93,10 +92,8 @@ class TestDockWebSocketClient:
             task = asyncio.create_task(client._on_connected(mock_ws))
             await asyncio.sleep(0)  # allow co-routine to start
             task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await task
-            except asyncio.CancelledError:
-                pass
 
         # Check that send was called with credentials
         if mock_ws.send.called:

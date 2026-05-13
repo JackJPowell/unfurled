@@ -7,7 +7,6 @@ import json
 import pytest
 
 from unfurled import Remote
-from unfurled.api import CoreAPI
 
 BASE_URL = "http://192.168.1.10/api/"
 API_KEY = "test-api-key"

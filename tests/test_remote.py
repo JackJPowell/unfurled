@@ -292,7 +292,7 @@ class TestWakeOnLan:
         remote.settings.network.wifi.wake_on_wlan = True
         remote.device.is_simulator = False
 
-        with patch.object(remote, "wake", new=AsyncMock(return_value=False)):
+        with patch.object(remote, "wake", new=AsyncMock(return_value=False)):  # noqa: SIM117
             with pytest.raises(RemoteIsSleeping):
                 await remote._ensure_awake()
 
