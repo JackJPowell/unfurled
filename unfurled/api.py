@@ -442,7 +442,7 @@ class CoreAPI:
 
     async def get_remotes(self) -> list[dict]:
         """GET /remotes - IR remote devices (not the physical UC remote)."""
-        return await self._get("remotes")
+        return await self._get("remotes?limit=100")
 
     async def get_remote_ir_codesets(self, remote_id: str) -> list[dict]:
         """GET /remotes/{id}/ir"""

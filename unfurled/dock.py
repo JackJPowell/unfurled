@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import json
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from .api import CoreAPI
 from .helpers.exceptions import HTTPError
-from .helpers.models import DockCommand
+from .helpers.models import DockCommand, UpdateInfo
 from .helpers.websocket import DockWebSocketClient
 
 if TYPE_CHECKING:
@@ -18,20 +18,6 @@ if TYPE_CHECKING:
 _LOGGER = logging.getLogger(__name__)
 
 _SIMULATOR_NAMES = {"Remote Two Simulator", "Remote 3 Simulator"}
-
-
-@dataclass
-class DockUpdateInfo:
-    """Firmware update state for a Dock, from ``GET /docks/{id}/update``."""
-
-    in_progress: bool = False
-    update_percent: int = 0
-    available: list[dict] = field(default_factory=list)
-    latest_version: str = ""
-    release_notes_url: str = ""
-    release_notes: str = ""
-    check_for_updates: bool = False
-    auto_update: bool = False
 
 
 class Dock:
@@ -61,38 +47,38 @@ class Dock:
         state: str = "",
         is_learning_active: bool = False,
     ) -> None:
-        # Identity
-        self._id = dock_id
-        self._name = name
-        self._model_number = model_number
-        self._hardware_revision = hardware_revision
-        self._serial_number = serial_number
-        self._manufacturer = "Unfolded Circle"
-        self._software_version = software_version
+        self.configuration_url = remote_configuration_url
+        self.api = CoreAPI(remote_endpoint, api_key=api_key)
+        self._ws_url = ws_url
 
-        # Derived from dock_id: "uc-dock-AA:BB:CC:DD:EE:FF" → MAC
-        self._mac_address = dock_id.lower().removeprefix("uc-dock-")
-        self._ip_address = ""
-        self._host_name = ""
+        # Device Info
+        self.device = DeviceInfo(
+            id=dock_id,
+            _name=name,
+            model_number=model_number,
+            hardware_revision=hardware_revision,
+            serial_number=serial_number,
+            software_version=software_version,
+        )
 
         # State
-        self._is_active = is_active
-        self._led_brightness = led_brightness
-        self._ethernet_led_brightness = ethernet_led_brightness
-        self._state = state
-        self._is_learning_active = is_learning_active
-        self._learned_code: dict = {}
+        self.state = DockState(
+            is_active=is_active,
+            state=state,
+            led_brightness=led_brightness,
+            ethernet_led_brightness=ethernet_led_brightness,
+            is_learning_active=is_learning_active,
+        )
 
         # Update state
-        self._update = DockUpdateInfo()
+        self.system = System(self)
+        self.settings = Settings()
+        self.state = DockState()
+
+        self._learned_code: dict = {}
 
         # Auth / connection
         self._api_key = api_key
-        self._remote_configuration_url = remote_configuration_url
-        self._ws_url = ws_url
-
-        # REST layer (talks via the remote's proxied dock endpoint)
-        self.api = CoreAPI(remote_endpoint, api_key=api_key)
 
         # Native WebSocket (direct to dock)
         self._ws_client: DockWebSocketClient | None = None
@@ -100,7 +86,6 @@ class Dock:
 
         # IR data
         self._codesets: list[dict] = []
-        self._ir_remotes: list[dict] = []
 
     # ------------------------------------------------------------------
     # Class method: construct from API dict
@@ -137,90 +122,10 @@ class Dock:
     # ------------------------------------------------------------------
     # Properties
     # ------------------------------------------------------------------
-
     @property
-    def id(self) -> str:
-        """Unique device identifier for this dock."""
-        return self._id
-
-    @property
-    def name(self) -> str:
-        """Human-readable dock name."""
-        return self._name or "Unfolded Circle Dock"
-
-    @property
-    def model_number(self) -> str:
-        """Raw model number string (e.g. ``\"UCD2\"``)."""
-        return self._model_number
-
-    @property
-    def model_name(self) -> str:
-        """Marketing model name derived from the model number."""
-        if self._model_number == "UCD2":
-            return "Dock Two"
-        if self._model_number == "UCD3":
-            return "Dock 3"
-        return self._model_number or "Unfolded Circle Dock"
-
-    @property
-    def hardware_revision(self) -> str:
-        """Hardware revision string."""
-        return self._hardware_revision
-
-    @property
-    def serial_number(self) -> str:
-        """Device serial number."""
-        return self._serial_number
-
-    @property
-    def software_version(self) -> str:
-        """Currently running firmware version."""
-        return self._software_version
-
-    @property
-    def manufacturer(self) -> str:
-        """Manufacturer name."""
-        return self._manufacturer
-
-    @property
-    def mac_address(self) -> str:
-        """Primary MAC address."""
-        return self._mac_address
-
-    @property
-    def ip_address(self) -> str:
-        """Current IP address."""
-        return self._ip_address
-
-    @property
-    def host_name(self) -> str:
-        """mDNS hostname."""
-        return self._host_name
-
-    @property
-    def is_active(self) -> bool:
-        """``True`` when the dock is in an active/connected state."""
-        return self._is_active
-
-    @property
-    def state(self) -> str:
-        """Current dock state string."""
-        return self._state
-
-    @property
-    def led_brightness(self) -> int:
-        """IR LED brightness level (0-100)."""
-        return self._led_brightness
-
-    @property
-    def ethernet_led_brightness(self) -> int:
-        """Ethernet port LED brightness level (0-100)."""
-        return self._ethernet_led_brightness
-
-    @property
-    def is_learning_active(self) -> bool:
-        """``True`` when an IR learning session is currently in progress."""
-        return self._is_learning_active
+    def ws_url(self) -> str:
+        """WebSocket URL for a direct connection to the dock."""
+        return self._ws_url
 
     @property
     def learned_code(self) -> dict:
@@ -228,24 +133,9 @@ class Dock:
         return self._learned_code
 
     @property
-    def update_info(self) -> DockUpdateInfo:
-        """Aggregated firmware update information for this dock."""
-        return self._update
-
-    @property
     def codesets(self) -> list[dict]:
         """Custom IR codesets stored on this dock."""
         return self._codesets
-
-    @property
-    def configuration_url(self) -> str:
-        """URL to the dock's configuration page on the remote."""
-        return self._remote_configuration_url
-
-    @property
-    def ws_url(self) -> str:
-        """WebSocket URL for a direct connection to the dock."""
-        return self._ws_url
 
     @property
     def is_connected(self) -> bool:
@@ -271,7 +161,7 @@ class Dock:
             reconnect_delay: Seconds between reconnection attempts.
         """
         if not self._ws_url:
-            _LOGGER.warning("Dock %s has no ws_url - cannot open WebSocket", self._id)
+            _LOGGER.warning("Dock %s has no ws_url - cannot open WebSocket", self.device.id)
             return
 
         self._ws_password = password
@@ -303,19 +193,19 @@ class Dock:
         if msg_type == "dock_state":
             state = data.get("msg_data", {}).get("state", "")
             if state:
-                self._state = state
+                self.state.state = state
 
         if msg_type == "software_update":
             msg_data = data.get("msg_data", {})
             event = msg_data.get("event_type", "")
             if event == "START":
-                self._update.in_progress = True
+                self.system.update_info.in_progress = True
             elif event == "PROGRESS":
                 progress = msg_data.get("progress", {})
-                self._update.update_percent = int(progress.get("current_percent", 0))
+                self.system.update_info.update_percent = int(progress.get("current_percent", 0))
             elif event in ("DONE", "SUCCESS"):
-                self._update.in_progress = False
-                self._update.update_percent = 0
+                self.system.update_info.in_progress = False
+                self.system.update_info.update_percent = 0
 
         if msg_type == "ir_learn":
             self._learned_code = data.get("msg_data", {})
@@ -324,85 +214,29 @@ class Dock:
     # REST operations
     # ------------------------------------------------------------------
 
-    async def send_command(self, command: DockCommand, **params: object) -> dict:
-        """Send a control command to the dock via the remote's API.
-
-        Args:
-            command: A :class:`~unfurled.models.DockCommand` value.
-            **params: Additional parameters included in the request body.
-        """
-        body: dict = {"cmd": command.value, **params}
-        return await self.api._post(f"docks/{self._id}/cmd", json=body)
-
-    async def set_led_brightness(self, brightness: int) -> None:
-        """Set the dock LED brightness.
-
-        Args:
-            brightness: Brightness level 0-100.
-        """
-        await self.send_command(DockCommand.SET_LED_BRIGHTNESS, brightness=brightness)
-        self._led_brightness = brightness
-
-    async def identify(self) -> None:
-        """Flash the dock LEDs to visually identify this unit."""
-        await self.send_command(DockCommand.IDENTIFY)
-
-    async def reboot(self) -> None:
-        """Reboot the dock."""
-        await self.send_command(DockCommand.REBOOT)
-
     async def get_info(self) -> dict:
         """Fetch detailed device information from the remote and update local state.
 
         Returns:
             Raw device info dict from ``GET /docks/devices/{id}``.
         """
-        info = await self.api.get_dock_detail(self._id)
-        self._name = info.get("name", self._name)
+        info = await self.api.get_dock_detail(self.device.id)
+        self.device.name = info.get("name", self.device.name)
         self._ws_url = info.get("resolved_ws_url", self._ws_url)
-        self._is_active = bool(info.get("active", self._is_active))
-        self._model_number = info.get("model", self._model_number)
-        self._hardware_revision = info.get("revision", self._hardware_revision)
-        self._serial_number = info.get("serial", self._serial_number)
-        self._led_brightness = int(info.get("led_brightness", self._led_brightness))
-        self._ethernet_led_brightness = int(
-            info.get("eth_led_brightness", self._ethernet_led_brightness)
+        self.state.is_active = bool(info.get("active", self.state.is_active))
+        self.device.model_number = info.get("model", self.device.model_number)
+        self.device.hardware_revision = info.get("revision", self.device.hardware_revision)
+        self.device.serial_number = info.get("serial", self.device.serial_number)
+        self.state.led_brightness = int(info.get("led_brightness", self.state.led_brightness))
+        self.state.ethernet_led_brightness = int(
+            info.get("eth_led_brightness", self.state.ethernet_led_brightness)
         )
-        self._software_version = info.get("version", self._software_version)
-        self._state = info.get("state", self._state)
-        self._is_learning_active = bool(info.get("learning_active", self._is_learning_active))
+        self.device.software_version = info.get("version", self.device.software_version)
+        self.state.state = info.get("state", self.state.state)
+        self.state.is_learning_active = bool(
+            info.get("learning_active", self.state.is_learning_active)
+        )
         return info
-
-    async def get_update_status(self) -> dict:
-        """Fetch firmware update status and update local state.
-
-        Returns:
-            Raw update status dict from ``GET /docks/devices/{id}/update``.
-        """
-        info = await self.api.get_dock_update_status(self._id)
-        self._update.latest_version = info.get("version", "")
-        self._update.available = info.get("update_available", [])
-        self._update.check_for_updates = bool(info.get("update_check_enabled", False))
-        return info
-
-    async def update_firmware(self) -> dict:
-        """Trigger a firmware update for the dock.
-
-        Returns:
-            Response dict which includes a ``state`` key.  The state may be
-            ``"DOWNLOADING"``, ``"NO_BATTERY"``, or the response from the
-            firmware update endpoint on success.
-        """
-        try:
-            info = await self.api.post_dock_update(self._id)
-            self._update.in_progress = True
-            return info
-        except HTTPError as exc:
-            if exc.status_code == 409:
-                return {"state": "DOWNLOADING"}
-            if exc.status_code == 503:
-                return {"state": "NO_BATTERY"}
-            raise
 
     async def validate_connection(self) -> bool:
         """Check that the dock is reachable via the remote proxy.
@@ -411,7 +245,7 @@ class Dock:
             ``True`` if the dock device info can be retrieved successfully.
         """
         try:
-            await self.api.get_dock_detail(self._id)
+            await self.api.get_dock_detail(self.device.id)
             return True
         except Exception:
             return False
@@ -422,52 +256,33 @@ class Dock:
         Returns:
             Response dict from ``PUT /ir/emitters/{id}/learn``.
         """
-        result = await self.api.put_ir_emitter_learn(self._id)
-        self._is_learning_active = True
+        result = await self.api.put_ir_emitter_learn(self.device.id)
+        self.state.is_learning_active = True
         return result
 
     async def stop_ir_learning(self) -> None:
         """Stop an active IR learning session on this dock."""
-        await self.api.delete_ir_emitter_learn(self._id)
-        self._is_learning_active = False
+        await self.api.delete_ir_emitter_learn(self.device.id)
+        self.state.is_learning_active = False
 
     async def get_remotes(self) -> list[dict]:
-        """Return enabled IR remote definitions stored on the remote.
-
-        Populates :attr:`_ir_remotes` with dicts containing ``name`` and
-        ``entity_id`` for each enabled remote.
+        """Return IR remote definitions stored on the remote.
 
         Returns:
-            List of ``{"name": ..., "entity_id": ...}`` dicts.
+            Raw list of remote definition dicts from the API.
         """
-        self._ir_remotes = []
-        raw = await self.api.get_remotes()
-        for remote in raw:
-            if remote.get("enabled"):
-                name_field = remote.get("name", {})
-                name = name_field.get("en") if isinstance(name_field, dict) else str(name_field)
-                self._ir_remotes.append({"name": name, "entity_id": remote.get("entity_id")})
-        return self._ir_remotes
+        return await self.api.get_remotes()
 
-    async def get_remotes_complete(self) -> list[dict]:
-        """Return full IR remote definitions (including codeset data).
+    async def get_remote_by_id(self, entity_id: str) -> dict:
+        """Return full IR remote definition for a given entity ID.
 
-        Fetches the list of remotes via :meth:`get_remotes` then retrieves
-        detailed info for each one.
+        Args:
+            entity_id: The remote entity ID.
 
         Returns:
-            List of full remote definition dicts.
+            Full remote definition dict from the API.
         """
-        if not self._ir_remotes:
-            await self.get_remotes()
-
-        complete: list[dict] = []
-        for remote in self._ir_remotes:
-            entity_id = remote.get("entity_id", "")
-            if entity_id:
-                info = await self.api.get_remote(entity_id)
-                complete.append(info)
-        return complete
+        return await self.api.get_remote(entity_id)
 
     async def get_custom_codesets(self) -> list[dict]:
         """Return user-defined custom IR codesets from the remote.
@@ -577,7 +392,7 @@ class Dock:
         except Exception as exc:
             _LOGGER.debug("Dock.update get_info error: %s", exc)
         try:
-            await self.get_update_status()
+            await self.system.get_update_status()
         except Exception as exc:
             _LOGGER.debug("Dock.update get_update_status error: %s", exc)
 
@@ -585,3 +400,150 @@ class Dock:
         """Release all resources held by this dock."""
         await self.disconnect_websocket()
         await self.api.close()
+
+    # ------------------------------------------------------------------
+    # Context manager support
+    # ------------------------------------------------------------------
+
+    async def __aenter__(self) -> Dock:
+        return self
+
+    async def __aexit__(self, *_: object) -> None:
+        await self.close()
+
+
+@dataclass
+class DeviceInfo:
+    """Device information for a Dock, from ``GET /docks/{id}``."""
+
+    id: str = ""
+    _name: str = ""
+    model_number: str = ""
+    hardware_revision: str = ""
+    serial_number: str = ""
+    manufacturer: str = "Unfolded Circle"
+    software_version: str = ""
+    ip_address: str = ""
+
+    @property
+    def name(self) -> str:
+        """Human-readable dock name."""
+        return self._name or "Unfolded Circle Dock"
+
+    @name.setter
+    def name(self, value: str) -> None:
+        self._name = value
+
+    @property
+    def model_name(self) -> str:
+        """Marketing model name derived from the model number."""
+        if self.model_number == "UCD2":
+            return "Dock Two"
+        if self.model_number == "UCD3":
+            return "Dock 3"
+        return self.model_number or "Unfolded Circle Dock"
+
+    @property
+    def mac_address(self) -> str:
+        """MAC address derived from the dock ID."""
+        return self.id.lower().removeprefix("uc-dock-")
+
+
+@dataclass
+class DockState:
+    """Current state of the dock."""
+
+    is_active: bool = False
+    state: str = ""
+    led_brightness: int = 0
+    ethernet_led_brightness: int = 0
+    is_learning_active: bool = False
+
+
+class System:
+    """System-level state and operations for a dock."""
+
+    def __init__(self, dock: Dock) -> None:
+        self.update_info = UpdateInfo()
+        self._dock = dock
+
+    @property
+    def _api(self) -> CoreAPI:
+        """Shortcut to the parent remote's :class:`~unfurled.api.CoreAPI` client."""
+        return self._dock.api
+
+    async def _send_command(self, command: DockCommand, **params: object) -> dict:
+        """Send a control command to the dock via the remote's API.
+
+        Args:
+            command: A :class:`~unfurled.models.DockCommand` value.
+            **params: Additional parameters included in the request body.
+        """
+        body: dict = {"cmd": command.value, **params}
+        return await self._api._post(f"docks/{self._dock.device.id}/cmd", json=body)
+
+    async def set_led_brightness(self, brightness: int) -> None:
+        """Set the dock LED brightness.
+
+        Args:
+            brightness: Brightness level 0-100.
+        """
+        await self._send_command(DockCommand.SET_LED_BRIGHTNESS, brightness=brightness)
+        self._dock.state.led_brightness = brightness
+
+    async def identify(self) -> None:
+        """Flash the dock LEDs to visually identify this unit."""
+        await self._send_command(DockCommand.IDENTIFY)
+
+    async def reboot(self) -> None:
+        """Reboot the dock."""
+        await self._send_command(DockCommand.REBOOT)
+
+    async def get_update_status(self) -> dict:
+        """Fetch firmware update status and update local state.
+
+        Returns:
+            Raw update status dict from ``GET /docks/devices/{id}/update``.
+        """
+        info = await self._dock.api.get_dock_update_status(self._dock.device.id)
+        self.update_info.latest_version = info.get("version", "")
+        self.update_info.available = info.get("update_available", [])
+        self._dock.settings.software_update.check_for_updates = bool(
+            info.get("update_check_enabled", False)
+        )
+        return info
+
+    async def update_firmware(self) -> dict:
+        """Trigger a firmware update for the dock.
+
+        Returns:
+            Response dict which includes a ``state`` key.  The state may be
+            ``"DOWNLOADING"``, ``"NO_BATTERY"``, or the response from the
+            firmware update endpoint on success.
+        """
+        try:
+            info = await self._api.post_dock_update(self._dock.device.id)
+            self.update_info.in_progress = True
+            return info
+        except HTTPError as exc:
+            if exc.status_code == 409:
+                return {"state": "DOWNLOADING"}
+            if exc.status_code == 503:
+                return {"state": "NO_BATTERY"}
+            raise
+
+
+@dataclass
+class SoftwareUpdateSettings:
+    """Settings related to software updates."""
+
+    check_for_updates: bool = True
+    auto_download: bool = False
+    auto_install: bool = False
+
+
+class Settings:
+    """Aggregated settings for a dock."""
+
+    def __init__(self) -> None:
+        self.software_update = SoftwareUpdateSettings()

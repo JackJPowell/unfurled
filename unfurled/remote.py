@@ -548,7 +548,7 @@ class Remote:
 
     def find_dock(self, dock_id: str) -> Dock | None:
         """Return the dock with the given ID, or ``None`` if not found."""
-        return next((d for d in self.docks if d.id == dock_id), None)
+        return next((d for d in self.docks if d.device.id == dock_id), None)
 
     def get_all_entities_in_use(self, integration_id_filter: str = "") -> list[str]:
         """Return entity IDs referenced by any loaded activity.
