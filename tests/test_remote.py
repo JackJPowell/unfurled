@@ -147,7 +147,7 @@ class TestRemoteInit:
             await remote.init()
 
         assert len(remote.docks) == 1
-        assert remote.docks[0].name == "Living Room Dock"
+        assert remote.docks[0].device.name == "Living Room Dock"
 
     async def test_init_detects_system_name(self, remote: Remote):
         with aioresponses() as m:

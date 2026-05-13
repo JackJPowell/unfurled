@@ -36,13 +36,13 @@ class TestDockFromDict:
         dock = Dock.from_dict(
             DOCK_DATA, api_key=API_KEY, remote_endpoint=BASE_URL, remote_configuration_url=""
         )
-        assert dock.id == "uc-dock-aa:bb:cc:dd:ee:01"
+        assert dock.device.id == "uc-dock-aa:bb:cc:dd:ee:01"
 
     def test_parses_name(self):
         dock = Dock.from_dict(
             DOCK_DATA, api_key=API_KEY, remote_endpoint=BASE_URL, remote_configuration_url=""
         )
-        assert dock.name == "My Dock"
+        assert dock.device.name == "My Dock"
 
     def test_parses_ws_url(self):
         dock = Dock.from_dict(
@@ -54,19 +54,19 @@ class TestDockFromDict:
         dock = Dock.from_dict(
             DOCK_DATA, api_key=API_KEY, remote_endpoint=BASE_URL, remote_configuration_url=""
         )
-        assert dock.led_brightness == 50
+        assert dock.state.led_brightness == 50
 
     def test_parses_state(self):
         dock = Dock.from_dict(
             DOCK_DATA, api_key=API_KEY, remote_endpoint=BASE_URL, remote_configuration_url=""
         )
-        assert dock.state == "CONNECTED"
+        assert dock.state.state == "CONNECTED"
 
     def test_is_active(self):
         dock = Dock.from_dict(
             DOCK_DATA, api_key=API_KEY, remote_endpoint=BASE_URL, remote_configuration_url=""
         )
-        assert dock.is_active is True
+        assert dock.state.is_active is True
 
 
 class TestDockRestCommands:
@@ -79,39 +79,39 @@ class TestDockRestCommands:
     async def test_send_command_reboot(self, dock: Dock):
         with aioresponses() as m:
             m.post(
-                f"{BASE_URL}docks/{dock.id}/cmd",
+                f"{BASE_URL}docks/{dock.device.id}/cmd",
                 payload={"status": "ok"},
             )
-            await dock.send_command(DockCommand.REBOOT)
+            await dock.system._send_command(DockCommand.REBOOT)
 
     async def test_set_led_brightness(self, dock: Dock):
         with aioresponses() as m:
             m.post(
-                f"{BASE_URL}docks/{dock.id}/cmd",
+                f"{BASE_URL}docks/{dock.device.id}/cmd",
                 payload={"status": "ok"},
             )
             m.put(
-                f"{BASE_URL}docks/{dock.id}",
+                f"{BASE_URL}docks/{dock.device.id}",
                 payload={"led_brightness": 75},
             )
-            await dock.set_led_brightness(75)
-        assert dock.led_brightness == 75
+            await dock.system.set_led_brightness(75)
+        assert dock.state.led_brightness == 75
 
     async def test_identify_sends_command(self, dock: Dock):
         with aioresponses() as m:
             m.post(
-                f"{BASE_URL}docks/{dock.id}/cmd",
+                f"{BASE_URL}docks/{dock.device.id}/cmd",
                 payload={"status": "ok"},
             )
-            await dock.identify()
+            await dock.system.identify()
 
     async def test_reboot_sends_command(self, dock: Dock):
         with aioresponses() as m:
             m.post(
-                f"{BASE_URL}docks/{dock.id}/cmd",
+                f"{BASE_URL}docks/{dock.device.id}/cmd",
                 payload={"status": "ok"},
             )
-            await dock.reboot()
+            await dock.system.reboot()
 
 
 class TestDockWsMessageHandling:
