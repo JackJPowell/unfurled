@@ -482,7 +482,7 @@ class CoreAPI:
 
     async def get_integrations(self, limit: int = 100) -> list[dict]:
         """GET /intg/instances  (all pages)."""
-        return await self._get_paginated(f"intg/instances?limit={limit}")
+        return await self._get(f"intg/instances?limit={limit}")
 
     async def get_integration(self, integration_id: str) -> dict:
         """GET /intg/instances/{id}"""
