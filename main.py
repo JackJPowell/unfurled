@@ -149,7 +149,7 @@ async def _list_docks(remote: Remote) -> None:
         print("  (none)")
         return
     for dock in remote.docks:
-        print(f"  {dock.name!r}  model={dock.model_name}  state={dock.state}")
+        print(f"  {dock.device.name!r}  model={dock.device.model_name}  state={dock.state}")
 
 
 async def _list_ir_emitters(remote: Remote) -> None:
@@ -157,6 +157,26 @@ async def _list_ir_emitters(remote: Remote) -> None:
     print(f"\n--- IR emitters ({len(emitters)}) ---")
     for e in emitters:
         print(f"  {e.name!r}  type={e.type}  state={e.state}  id={e.device_id}")
+
+
+async def _list_unused_entities(remote: Remote) -> None:
+    print("\n--- Unused activity entities ---")
+    unused = await remote.helpers.find_unused_activity_entities()
+    if not unused:
+        print("No unused entities found.")
+        return
+    for entity in unused:
+        print(f"  {entity['entity_id']} in activity {entity['activity_name']}")
+
+
+async def _list_orphaned_entities(remote: Remote) -> None:
+    print("\n--- Orphaned activity entities ---")
+    orphaned = await remote.helpers.find_orphaned_entities()
+    if not orphaned:
+        print("No orphaned entities found.")
+        return
+    for entity in orphaned:
+        print(f"  {entity['entity_id']} in activity {entity['activity_name']}")
 
 
 async def _send_ir(remote: Remote) -> None:
@@ -222,6 +242,8 @@ MENU: list[tuple[str, Any]] = [
     ("List IR emitters", _list_ir_emitters),
     ("Send IR code", _send_ir),
     ("List media player entities", _list_entities),
+    ("List unused activity entities", _list_unused_entities),
+    ("List orphaned activity entities", _list_orphaned_entities),
     ("Poll state update", _poll_update),
     ("Check for firmware update", _check_update),
     ("Raw API call (GET)", _raw_api_call),
