@@ -502,7 +502,8 @@ class CoreAPI:
     ) -> list[dict]:
         """GET /intg/instances/{id}/entities"""
         return await self._get(
-            f"intg/instances/{integration_id}/entities?reload={'true' if reload else 'false'}&limit={limit}"
+            f"intg/instances/{integration_id}/entities?reload= \
+                {'true' if reload else 'false'}&limit={limit}"
         )
 
     async def post_integration_entities(self, integration_id: str, entity_ids: list[str]) -> dict:
