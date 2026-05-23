@@ -416,17 +416,17 @@ class CoreAPI:
     # IR / remotes / codesets
     # ------------------------------------------------------------------
 
-    async def get_ir_emitters(self) -> list[dict]:
-        """GET /ir/emitters"""
-        return await self._get("ir/emitters")
+    async def get_ir_emitters(self, limit: int = 100) -> list[dict]:
+        """GET /ir/emitters?limit=<n>"""
+        return await self._get(f"ir/emitters?limit={limit}")
 
     async def put_ir_send(self, emitter_id: str, body: dict) -> dict:
         """PUT /ir/emitters/{id}/send"""
         return await self._put(f"ir/emitters/{emitter_id}/send", json=body)
 
-    async def get_ir_custom_codes(self) -> list[dict]:
-        """GET /ir/codes/custom"""
-        return await self._get("ir/codes/custom")
+    async def get_ir_custom_codes(self, limit: int = 100) -> list[dict]:
+        """GET /ir/codes/custom?limit=<n>"""
+        return await self._get(f"ir/codes/custom?limit={limit}")
 
     async def get_ir_manufacturers(self, query: str, page: int = 1, limit: int = 100) -> dict:
         """GET /ir/codes/manufacturers"""
@@ -440,9 +440,9 @@ class CoreAPI:
             f"ir/codes/manufacturers/{manufacturer_id}?page={page}&limit={limit}"
         )
 
-    async def get_remotes(self) -> list[dict]:
+    async def get_remotes(self, limit: int = 100) -> list[dict]:
         """GET /remotes - IR remote devices (not the physical UC remote)."""
-        return await self._get("remotes?limit=100")
+        return await self._get(f"remotes?limit={limit}")
 
     async def get_remote_ir_codesets(self, remote_id: str) -> list[dict]:
         """GET /remotes/{id}/ir"""
@@ -452,9 +452,9 @@ class CoreAPI:
     # Docks
     # ------------------------------------------------------------------
 
-    async def get_docks(self) -> list[dict]:
+    async def get_docks(self, limit: int = 100) -> list[dict]:
         """GET /docks"""
-        return await self._get("docks")
+        return await self._get(f"docks?limit={limit}")
 
     async def get_dock(self, dock_id: str) -> dict:
         """GET /docks/{id}"""
@@ -466,7 +466,7 @@ class CoreAPI:
 
     async def get_api_keys(self) -> list[dict]:
         """GET /auth/api_keys"""
-        return await self._get("auth/api_keys")
+        return await self._get("auth/api_keys?limit=100")
 
     async def post_api_key(self, name: str, scopes: list[str]) -> dict:
         """POST /auth/api_keys"""
@@ -480,9 +480,9 @@ class CoreAPI:
     # Integrations / drivers
     # ------------------------------------------------------------------
 
-    async def get_integrations(self) -> list[dict]:
+    async def get_integrations(self, limit: int = 100) -> list[dict]:
         """GET /intg/instances  (all pages)."""
-        return await self._get_paginated("intg/instances")
+        return await self._get_paginated(f"intg/instances?limit={limit}")
 
     async def get_integration(self, integration_id: str) -> dict:
         """GET /intg/instances/{id}"""
@@ -498,20 +498,20 @@ class CoreAPI:
         return await self._put(path)
 
     async def get_integration_entities(
-        self, integration_id: str, reload: bool = False
+        self, integration_id: str, reload: bool = False, limit: int = 100
     ) -> list[dict]:
         """GET /intg/instances/{id}/entities"""
         return await self._get(
-            f"intg/instances/{integration_id}/entities?reload={'true' if reload else 'false'}"
+            f"intg/instances/{integration_id}/entities?reload={'true' if reload else 'false'}&limit={limit}"
         )
 
     async def post_integration_entities(self, integration_id: str, entity_ids: list[str]) -> dict:
         """POST /intg/instances/{id}/entities"""
         return await self._post(f"intg/instances/{integration_id}/entities", json=entity_ids)
 
-    async def get_drivers(self) -> list[dict]:
+    async def get_drivers(self, limit: int = 100) -> list[dict]:
         """GET /intg/drivers"""
-        return await self._get("intg/drivers")
+        return await self._get(f"intg/drivers?limit={limit}")
 
     async def get_driver(self, driver_id: str) -> dict:
         """GET /intg/drivers/{id}"""
