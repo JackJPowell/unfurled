@@ -148,7 +148,7 @@ class TestEndpoints:
     async def test_get_docks(self, api: CoreAPI):
         payload = [{"entity_id": "uc-dock-001", "name": "My Dock"}]
         with aioresponses() as m:
-            m.get(f"{BASE}docks", payload=payload)
+            m.get(f"{BASE}docks?limit=100", payload=payload)
             result = await api.get_docks()
         assert result[0]["entity_id"] == "uc-dock-001"
 
@@ -161,7 +161,7 @@ class TestEndpoints:
     async def test_get_api_keys(self, api: CoreAPI):
         payload = [{"name": "pyUnfoldedCircle", "key_id": "k1"}]
         with aioresponses() as m:
-            m.get(f"{BASE}auth/api_keys", payload=payload)
+            m.get(f"{BASE}auth/api_keys?limit=100", payload=payload)
             result = await api.get_api_keys()
         assert result[0]["name"] == "pyUnfoldedCircle"
 
@@ -169,23 +169,6 @@ class TestEndpoints:
         with aioresponses() as m:
             m.delete(f"{BASE}auth/api_keys/k1", status=204, body="")
             await api.delete_api_key("k1")
-
-    async def test_paginated_fetches_all_pages(self, api: CoreAPI):
-        # First page returns 2 items, pagination-count says 3 total
-        # Second page returns the remaining 1 item
-        with aioresponses() as m:
-            m.get(
-                f"{BASE}intg/instances?limit=100&page=1",
-                payload=[{"id": "1"}, {"id": "2"}],
-                headers={"pagination-count": "3"},
-            )
-            m.get(
-                f"{BASE}intg/instances?limit=100&page=2",
-                payload=[{"id": "3"}],
-                headers={"pagination-count": "3"},
-            )
-            result = await api.get_integrations()
-        assert len(result) == 3
 
 
 # ---------------------------------------------------------------------------

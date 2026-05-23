@@ -67,13 +67,13 @@ def setup_default_api_mocks(m: aioresponses, base: str = BASE_URL) -> None:
             "updates": [],
         },
     )
-    m.get(f"{base}ir/emitters", payload=make_ir_emitters())
+    m.get(f"{base}ir/emitters?limit=100", payload=make_ir_emitters())
     m.get(f"{base}activities?limit=100", payload=make_activities())
     m.get(f"{base}activities/act-001", payload=make_activity_detail("act-001"))
     m.get(f"{base}activities/act-002", payload=make_activity_detail("act-002"))
     m.get(f"{base}activities/act-001/buttons", payload=[])
     m.get(f"{base}activities/act-002/buttons", payload=[])
-    m.get(f"{base}docks", payload=make_docks())
+    m.get(f"{base}docks?limit=100", payload=make_docks())
     m.get(f"{base}remotes", payload=[])
     m.get(f"{base}activities/groups", payload=[])
 
