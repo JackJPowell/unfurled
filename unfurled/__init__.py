@@ -30,6 +30,7 @@ from .helpers.exceptions import (
     TokenRegistrationError,
     UnfurledError,
 )
+from .helpers.helpers import Helpers
 from .helpers.models import (
     ActivityState,
     BluetoothSettings,
@@ -76,6 +77,7 @@ __all__ = [
     "Settings",
     "System",
     "IR",
+    "Helpers",
     # Domain
     "Activity",
     "ActivityGroup",

@@ -23,6 +23,7 @@ from unfurled.helpers.exceptions import (
     NoActivityRunning,
     RemoteIsSleeping,
 )
+from unfurled.helpers.helpers import Helpers
 from unfurled.helpers.models import (
     ActivityEntityLinkEvent,
     ActivityStateEvent,
@@ -98,6 +99,9 @@ class Remote:
 
         # System (feature flags, stats, update info, standby inhibitors)
         self.system = System(self)
+
+        # Helpers
+        self.helpers = Helpers(self)
 
         # Authentication
         self.auth = Authentication(self)
