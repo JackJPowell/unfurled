@@ -18,7 +18,7 @@ from urllib.parse import quote, urljoin, urlsplit
 
 import aiohttp
 
-from .helpers.exceptions import AuthenticationError, HTTPError
+from .helpers.exceptions import AuthenticationError, ConnectionError, HTTPError
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -173,23 +173,26 @@ class CoreAPI:
         session = await self._ensure_session()
         url = self._url(path)
         _LOGGER.debug("CoreAPI %s %s", method.upper(), url)
-        async with session.request(
-            method,
-            url,
-            json=json,
-            data=data,
-            params=params,
-            headers=headers,
-            timeout=self._normalize_timeout(timeout),
-        ) as response:
-            await self._raise_on_error(response)
-            if response.content_length == 0 or response.status == 204:
-                return None
-            if response_type == "text":
-                return await response.text()
-            if response_type == "bytes":
-                return await response.read()
-            return await response.json()
+        try:
+            async with session.request(
+                method,
+                url,
+                json=json,
+                data=data,
+                params=params,
+                headers=headers,
+                timeout=self._normalize_timeout(timeout),
+            ) as response:
+                await self._raise_on_error(response)
+                if response.content_length == 0 or response.status == 204:
+                    return None
+                if response_type == "text":
+                    return await response.text()
+                if response_type == "bytes":
+                    return await response.read()
+                return await response.json()
+        except aiohttp.ClientError as exc:
+            raise ConnectionError(f"Request to {url} failed: {exc}") from exc
 
     async def _request(
         self,
@@ -256,6 +259,10 @@ class CoreAPI:
         """GET /pub/version - firmware version without authentication."""
         return await self._get("pub/version")
 
+    async def get_version(self) -> dict:
+        """Return the public firmware and device-version payload."""
+        return await self.get_pub_version()
+
     async def get_pub_status(self) -> dict:
         """GET /pub/status - system resource usage."""
         return await self._get("pub/status")
@@ -275,6 +282,16 @@ class CoreAPI:
     async def get_configuration(self) -> dict:
         """GET /cfg - full device configuration."""
         return await self._get("cfg")
+
+    async def get_device_settings(self) -> dict:
+        """GET /cfg/device - device-specific configuration."""
+        return await self._get("cfg/device")
+
+    async def get_device_name(self) -> str | None:
+        """Return the configured device name, when the Remote provides one."""
+        device = await self.get_device_settings()
+        name = device.get("name") if isinstance(device, dict) else None
+        return str(name) if name else None
 
     async def post_system_command(self, cmd: str) -> None:
         """POST /system?cmd=<cmd>"""
@@ -541,6 +558,20 @@ class CoreAPI:
     async def delete_api_key(self, key_id: str) -> None:
         """DELETE /auth/api_keys/{id}"""
         await self._delete(f"auth/api_keys/{self._path_segment(key_id)}")
+
+    async def create_api_key(
+        self,
+        name: str,
+        scopes: list[str],
+        *,
+        replace_existing: bool = False,
+    ) -> dict:
+        """Create an API key, optionally replacing keys with the same name."""
+        if replace_existing:
+            for key in await self.get_api_keys():
+                if key.get("name") == name and (key_id := key.get("key_id")):
+                    await self.delete_api_key(str(key_id))
+        return await self.post_api_key(name, scopes)
 
     # ------------------------------------------------------------------
     # Integrations / drivers
@@ -828,8 +859,7 @@ class CoreAPI:
     ) -> dict:
         """POST /remotes/{id}/ir/{command_id} - add a command to an IR remote codeset."""
         return await self._post(
-            f"remotes/{self._path_segment(remote_entity_id)}/ir/"
-            f"{self._path_segment(command_id)}",
+            f"remotes/{self._path_segment(remote_entity_id)}/ir/{self._path_segment(command_id)}",
             json=body,
         )
 
@@ -838,8 +868,7 @@ class CoreAPI:
     ) -> dict:
         """PATCH /remotes/{id}/ir/{command_id} - update a command in an IR remote codeset."""
         return await self._patch(
-            f"remotes/{self._path_segment(remote_entity_id)}/ir/"
-            f"{self._path_segment(command_id)}",
+            f"remotes/{self._path_segment(remote_entity_id)}/ir/{self._path_segment(command_id)}",
             json=body,
         )
 
@@ -862,6 +891,10 @@ class CoreAPI:
     async def get_dock_update_status(self, dock_id: str) -> dict:
         """GET /docks/devices/{id}/update - dock firmware update status."""
         return await self._get(f"docks/devices/{self._path_segment(dock_id)}/update")
+
+    async def get_dock_update(self, dock_id: str) -> dict:
+        """Return dock firmware update status (alias for convenience)."""
+        return await self.get_dock_update_status(dock_id)
 
     async def post_dock_update(self, dock_id: str) -> dict:
         """POST /docks/devices/{id}/update - trigger a dock firmware update."""
