@@ -183,6 +183,15 @@ class TestEndpoints:
             result = await api.get_pub_version()
         assert result["hostname"] == "remote"
 
+    async def test_version_and_device_conveniences(self, api: CoreAPI):
+        with aioresponses() as m:
+            m.get(f"{BASE}pub/version", payload={"os": "2.3.0"})
+            m.get(f"{BASE}cfg/device", payload={"name": "Living Room"})
+            version = await api.get_version()
+            name = await api.get_device_name()
+        assert version["os"] == "2.3.0"
+        assert name == "Living Room"
+
     async def test_patch_display_settings(self, api: CoreAPI):
         with aioresponses() as m:
             m.patch(f"{BASE}cfg/display", payload={"auto_brightness": True, "brightness": 80})
@@ -218,6 +227,20 @@ class TestEndpoints:
         with aioresponses() as m:
             m.delete(f"{BASE}auth/api_keys/k1", status=204, body="")
             await api.delete_api_key("k1")
+
+    async def test_create_api_key_can_replace_an_existing_named_key(self, api: CoreAPI):
+        with aioresponses() as m:
+            m.get(f"{BASE}auth/api_keys?limit=100", payload=[{"name": "manager", "key_id": "k1"}])
+            m.delete(f"{BASE}auth/api_keys/k1", status=204, body="")
+            m.post(f"{BASE}auth/api_keys", payload={"api_key": "new-key"})
+            result = await api.create_api_key("manager", ["admin"], replace_existing=True)
+        assert result == {"api_key": "new-key"}
+
+    async def test_get_dock_update_alias(self, api: CoreAPI):
+        with aioresponses() as m:
+            m.get(f"{BASE}docks/devices/dock-1/update", payload={"available": True})
+            result = await api.get_dock_update("dock-1")
+        assert result == {"available": True}
 
     async def test_get_integration_entities_has_no_whitespace_in_query(self, api: CoreAPI):
         payload = [{"entity_id": "media_player.tv"}]
