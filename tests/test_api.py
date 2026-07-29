@@ -360,6 +360,29 @@ class TestEndpoints:
         with pytest.raises(ValueError):
             await api.get_logs(**kwargs)
 
+    async def test_ir_collections_support_pagination_and_kind_filters(self):
+        received: dict[str, dict[str, str]] = {}
+
+        async def remotes(request: web.Request) -> web.Response:
+            received["remotes"] = dict(request.query)
+            return web.json_response([])
+
+        async def custom_codes(request: web.Request) -> web.Response:
+            received["codes"] = dict(request.query)
+            return web.json_response([])
+
+        app = web.Application()
+        app.router.add_get("/api/remotes", remotes)
+        app.router.add_get("/api/ir/codes/custom", custom_codes)
+        async with core_test_server(app) as base, CoreAPI(base) as local_api:
+            await local_api.get_remotes(limit=25, kind="IR", page=2)
+            await local_api.get_ir_custom_codes(limit=25, page=3)
+
+        assert received == {
+            "remotes": {"limit": "25", "kind": "IR", "page": "2"},
+            "codes": {"limit": "25", "page": "3"},
+        }
+
 
 # ---------------------------------------------------------------------------
 # Session management
