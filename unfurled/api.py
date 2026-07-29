@@ -504,9 +504,14 @@ class CoreAPI:
         """PUT /ir/emitters/{id}/send"""
         return await self._put(f"ir/emitters/{self._path_segment(emitter_id)}/send", json=body)
 
-    async def get_ir_custom_codes(self, limit: int = 100) -> list[dict]:
-        """GET /ir/codes/custom?limit=<n>"""
-        return await self._get(f"ir/codes/custom?limit={limit}")
+    async def get_ir_custom_codes(
+        self, limit: int = 100, *, page: int | None = None
+    ) -> list[dict]:
+        """GET /ir/codes/custom, optionally selecting a result page."""
+        params: dict[str, int] = {"limit": limit}
+        if page is not None:
+            params["page"] = page
+        return await self._get("ir/codes/custom", params=params)
 
     async def get_ir_manufacturers(self, query: str, page: int = 1, limit: int = 100) -> dict:
         """GET /ir/codes/manufacturers"""
@@ -523,9 +528,20 @@ class CoreAPI:
             params={"page": page, "limit": limit},
         )
 
-    async def get_remotes(self, limit: int = 100) -> list[dict]:
-        """GET /remotes - IR remote devices (not the physical UC remote)."""
-        return await self._get(f"remotes?limit={limit}")
+    async def get_remotes(
+        self,
+        limit: int = 100,
+        *,
+        kind: str | None = None,
+        page: int | None = None,
+    ) -> list[dict]:
+        """GET /remotes, with optional kind filtering and pagination."""
+        params: dict[str, str | int] = {"limit": limit}
+        if kind is not None:
+            params["kind"] = kind
+        if page is not None:
+            params["page"] = page
+        return await self._get("remotes", params=params)
 
     async def get_remote_ir_codesets(self, remote_id: str) -> list[dict]:
         """GET /remotes/{id}/ir"""
