@@ -66,7 +66,7 @@ from .submodules.integrations import Integrations
 from .submodules.settings import Settings
 from .submodules.systems import System
 
-__version__ = "0.2.2"
+__version__ = "0.3.1"
 
 __all__ = [
     # Core
