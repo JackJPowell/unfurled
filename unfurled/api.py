@@ -64,6 +64,10 @@ class CoreAPI:
         self._session_is_external = session is not None
         self._session: aiohttp.ClientSession | None = session
 
+    def set_api_key(self, api_key: str) -> None:
+        """Update the bearer token used for subsequent requests."""
+        self._api_key = api_key
+
     # ------------------------------------------------------------------
     # Session management
     # ------------------------------------------------------------------
@@ -471,6 +475,25 @@ class CoreAPI:
     # Entities
     # ------------------------------------------------------------------
 
+    async def get_macros(
+        self,
+        limit: int = 100,
+        *,
+        page: int | None = None,
+        q: str | None = None,
+    ) -> list[dict]:
+        """GET /macros, optionally filtering by page and search query."""
+        params: dict[str, str | int] = {"limit": limit}
+        if page is not None:
+            params["page"] = page
+        if q is not None:
+            params["q"] = q
+        return await self._get("macros", params=params)
+
+    async def get_macro(self, entity_id: str) -> dict:
+        """GET /macros/{entity_id}."""
+        return await self._get(f"macros/{self._path_segment(entity_id)}")
+
     async def put_entity_command(
         self, entity_id: str, cmd_id: str, params: dict | None = None
     ) -> dict:
@@ -504,28 +527,53 @@ class CoreAPI:
         """PUT /ir/emitters/{id}/send"""
         return await self._put(f"ir/emitters/{self._path_segment(emitter_id)}/send", json=body)
 
-    async def get_ir_custom_codes(
-        self, limit: int = 100, *, page: int | None = None
-    ) -> list[dict]:
+    async def get_ir_custom_codes(self, limit: int = 100, *, page: int | None = None) -> list[dict]:
         """GET /ir/codes/custom, optionally selecting a result page."""
         params: dict[str, int] = {"limit": limit}
         if page is not None:
             params["page"] = page
         return await self._get("ir/codes/custom", params=params)
 
-    async def get_ir_manufacturers(self, query: str, page: int = 1, limit: int = 100) -> dict:
-        """GET /ir/codes/manufacturers"""
-        return await self._get(
-            "ir/codes/manufacturers", params={"page": page, "limit": limit, "q": query}
-        )
+    async def get_ir_custom_codeset(self, device_id: str) -> dict:
+        """GET /ir/codes/custom/{device_id}."""
+        return await self._get(f"ir/codes/custom/{self._path_segment(device_id)}")
+
+    async def get_ir_manufacturers(
+        self, limit: int = 100, *, page: int | None = None, q: str | None = None
+    ) -> list[dict]:
+        """GET /ir/codes/manufacturers, optionally filtering by name."""
+        params: dict[str, str | int] = {"limit": limit}
+        if page is not None:
+            params["page"] = page
+        if q is not None:
+            params["q"] = q
+        return await self._get("ir/codes/manufacturers", params=params)
 
     async def get_ir_manufacturer_codesets(
-        self, manufacturer_id: str, page: int = 1, limit: int = 100
-    ) -> dict:
-        """GET /ir/codes/manufacturers/{id}"""
+        self,
+        manufacturer_id: str,
+        limit: int = 100,
+        *,
+        page: int | None = None,
+        q: str | None = None,
+    ) -> list[dict]:
+        """GET /ir/codes/manufacturers/{manufacturer_id}, optionally filtering by name."""
+        params: dict[str, str | int] = {"limit": limit}
+        if page is not None:
+            params["page"] = page
+        if q is not None:
+            params["q"] = q
         return await self._get(
-            f"ir/codes/manufacturers/{self._path_segment(manufacturer_id)}",
-            params={"page": page, "limit": limit},
+            f"ir/codes/manufacturers/{self._path_segment(manufacturer_id)}", params=params
+        )
+
+    async def get_ir_manufacturer_codeset_commands(
+        self, manufacturer_id: str, codeset_id: str
+    ) -> list[str]:
+        """GET /ir/codes/manufacturers/{manufacturer_id}/{codeset_id}."""
+        return await self._get(
+            "ir/codes/manufacturers/"
+            f"{self._path_segment(manufacturer_id)}/{self._path_segment(codeset_id)}"
         )
 
     async def get_remotes(

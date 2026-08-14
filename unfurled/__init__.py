@@ -8,9 +8,10 @@ Public interface::
 """
 
 from .api import CoreAPI
-from .dock import Dock
+from .dock import Dock, ExternalPort
 from .entities.activity import Activity, ActivityGroup
 from .entities.ir import IR, IRCode, IRCodeset, IRCustomCode, IREmitter
+from .entities.macro import Macro
 from .entities.media_player import MediaPlayerEntity
 from .helpers.discovery import DiscoveredDevice, discover_remotes, discover_remotes_sync
 from .helpers.exceptions import (
@@ -46,6 +47,7 @@ from .helpers.models import (
     PowerMode,
     PowerSavingSettings,
     ProfileSettings,
+    RemoteCommand,
     RemoteFeatureFlags,
     RemoteState,
     RemoteStats,
@@ -70,6 +72,7 @@ __all__ = [
     # Core
     "Remote",
     "Dock",
+    "ExternalPort",
     "CoreAPI",
     # Sub-objects
     "RemoteModule",
@@ -86,6 +89,7 @@ __all__ = [
     "IRCode",
     "IRCodeset",
     "IRCustomCode",
+    "Macro",
     "MediaPlayerEntity",
     # WebSocket
     "WebSocketClient",
@@ -99,6 +103,7 @@ __all__ = [
     "ActivityState",
     "MediaPlayerState",
     "PowerMode",
+    "RemoteCommand",
     "UpdateType",
     "DeviceInfo",
     "UpdateInfo",

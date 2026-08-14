@@ -5,8 +5,11 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
+from packaging.version import InvalidVersion, Version
+
 from ..helpers.exceptions import HTTPError, SystemCommandNotFound
 from ..helpers.models import (
+    RemoteCommand,
     RemoteFeatureFlags,
     RemoteStats,
     SoftwareUpdateEvent,
@@ -19,10 +22,6 @@ if TYPE_CHECKING:
     from ..remote import Remote
 
 _LOGGER = logging.getLogger(__name__)
-
-_SYSTEM_COMMANDS = frozenset(
-    {"STANDBY", "REBOOT", "POWER_OFF", "RESTART", "RESTART_UI", "RESTART_CORE"}
-)
 
 
 class System(RemoteModule):
@@ -67,14 +66,51 @@ class System(RemoteModule):
         try:
             if self._remote.device.is_simulator:
                 return
-            data = await self._api.get_system_update()
-            self.update_info.latest_version = data.get("version", "")
-            self.update_info.release_notes_url = data.get("release_notes_url", "")
-            self.update_info.release_notes = data.get("release_notes", "")
-            self.update_info.next_check_date = data.get("next_check_date", "")
-            self.update_info.available = data.get("updates", [])
+            self._apply_update_info(await self._api.get_system_update())
         except HTTPError:
             pass
+
+    def _apply_update_info(self, data: dict) -> None:
+        """Map a GET or PUT system update response onto remote state."""
+        installed_version = data.get("installed_version", self._remote.device.sw_version)
+        if installed_version:
+            self._remote.device.sw_version = installed_version
+
+        self.update_info.in_progress = bool(data.get("update_in_progress", False))
+        self.update_info.next_check_date = data.get("next_check_date", "")
+        self._remote.settings.software_update.check_for_updates = bool(
+            data.get(
+                "update_check_enabled",
+                self._remote.settings.software_update.check_for_updates,
+            )
+        )
+
+        # available is omitted, rather than returned empty, when firmware is current.
+        available = data.get("available", data.get("updates", [])) or []
+        self.update_info.available = available
+        latest = data.get("version", "")
+        update: dict = {}
+        if not latest:
+            candidates = [item for item in available if item.get("version")]
+            if candidates:
+
+                def version_key(item: dict) -> Version:
+                    try:
+                        return Version(item["version"])
+                    except InvalidVersion:
+                        return Version("0")
+
+                update = max(candidates, key=version_key)
+                latest = update["version"]
+
+        self.update_info.latest_version = latest or self._remote.device.sw_version
+        self.update_info.release_notes_url = data.get(
+            "release_notes_url", update.get("release_notes_url", "")
+        )
+        release_notes = data.get("release_notes", update.get("description", ""))
+        self.update_info.release_notes = self._remote.settings.get_text_for_locale(
+            release_notes, default_text=""
+        )
 
     async def _fetch_charger(self) -> None:
         data = await self._api.get_charger()
@@ -128,28 +164,56 @@ class System(RemoteModule):
     # System command operations
     # ------------------------------------------------------------------
 
-    async def send_command(self, cmd: str) -> None:
+    async def send_command(self, cmd: RemoteCommand | str) -> None:
         """Send a system command to the remote.
 
         Args:
-            cmd: One of ``STANDBY``, ``REBOOT``, ``POWER_OFF``, ``RESTART``,
-                ``RESTART_UI``, or ``RESTART_CORE``.
+            cmd: A :class:`~unfurled.helpers.models.RemoteCommand` value or its
+                string equivalent (e.g. ``RemoteCommand.STANDBY`` or ``"STANDBY"``)
 
         Raises:
             :class:`~unfurled.exceptions.SystemCommandNotFound`: if ``cmd`` is invalid.
         """
-        if cmd not in _SYSTEM_COMMANDS:
-            raise SystemCommandNotFound(cmd)
+        try:
+            cmd = RemoteCommand(cmd)
+        except ValueError:
+            raise SystemCommandNotFound(cmd) from None
         await self._ensure_awake()
         await self._api.post_system_command(cmd)
+
+    async def reboot(self) -> None:
+        """Reboot the remote."""
+        await self.send_command(RemoteCommand.REBOOT)
+
+    async def standby(self) -> None:
+        """Put the remote into standby mode."""
+        await self.send_command(RemoteCommand.STANDBY)
+
+    async def power_off(self) -> None:
+        """Power off the remote."""
+        await self.send_command(RemoteCommand.POWER_OFF)
+
+    async def restart(self) -> None:
+        """Restart the remote."""
+        await self.send_command(RemoteCommand.RESTART)
 
     # ------------------------------------------------------------------
     # Firmware update operations
     # ------------------------------------------------------------------
 
     async def get_update_status(self) -> dict:
-        """Return the latest software update status from the remote."""
-        return await self._api.get_system_update_latest()
+        """Return the latest software update status and update local progress."""
+        status = await self._api.get_system_update_latest()
+        progress = status.get("progress", {})
+        self.update_info.download_percent = int(
+            progress.get("download_percent", status.get("download_percent", 0)) or 0
+        )
+        self.update_info.update_percent = int(
+            progress.get("update_percent", status.get("update_percent", 0)) or 0
+        )
+        state = status.get("state", "")
+        self.update_info.in_progress = state in {"START", "INSTALLING", "UPDATING"}
+        return status
 
     async def update_firmware(self, *, download_only: bool = False) -> str:
         """Trigger a firmware update.
@@ -171,7 +235,9 @@ class System(RemoteModule):
         Returns:
             Update information dict from the remote.
         """
-        return await self._api.put_system_update()
+        data = await self._api.put_system_update()
+        self._apply_update_info(data)
+        return data
 
     # ------------------------------------------------------------------
     # Wireless charging

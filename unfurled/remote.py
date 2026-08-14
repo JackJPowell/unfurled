@@ -5,16 +5,19 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+from collections.abc import Callable, Coroutine
+from typing import Any
 from urllib.parse import urljoin, urlparse
 
 import aiohttp
-from packaging.version import Version
+from packaging.version import InvalidVersion, Version
 from wakeonlan import send_magic_packet
 
 from unfurled.api import CoreAPI
 from unfurled.dock import Dock
 from unfurled.entities.activity import Activity, ActivityGroup
 from unfurled.entities.ir import IR, IRCodeset, IREmitter
+from unfurled.entities.macro import Macro
 from unfurled.entities.media_player import MediaPlayerEntity
 from unfurled.helpers.exceptions import (
     AuthenticationError,
@@ -26,6 +29,7 @@ from unfurled.helpers.exceptions import (
 from unfurled.helpers.helpers import Helpers
 from unfurled.helpers.models import (
     ActivityEntityLinkEvent,
+    ActivityState,
     ActivityStateEvent,
     AmbientLightEvent,
     BatteryEvent,
@@ -126,9 +130,15 @@ class Remote:
         # WebSocket
         self._ws_client: RemoteWebSocketClient | None = None
         self._last_update_type: UpdateType = UpdateType.NONE
+        self._state_change_callbacks: list[Callable[[], Coroutine[Any, Any, None]]] = []
 
         # Entities cache (media players referenced by activities)
         self._entities: dict[str, MediaPlayerEntity] = {}
+
+    def set_api_key(self, api_key: str) -> None:
+        """Update the API key used by REST and WebSocket requests."""
+        self._api_key = api_key
+        self.api.set_api_key(api_key)
 
     # ------------------------------------------------------------------
     # URL helpers (static / class)
@@ -202,9 +212,113 @@ class Remote:
             await asyncio.sleep(1)
         return False
 
+    @classmethod
+    async def get_version_information(cls, api_url: str) -> dict:
+        """Fetch version information from ``GET /pub/version`` without authentication.
+
+        Suitable for use during mDNS discovery before credentials are known.
+
+        Args:
+            api_url: Base API URL (e.g. ``"http://192.168.1.10:8080/api/"``).
+
+        Returns:
+            Raw JSON dict from the endpoint, or an empty dict on failure.
+        """
+        validated_url = cls._normalize_url(api_url)
+        version_url = urljoin(validated_url, "pub/version")
+        try:
+            async with aiohttp.ClientSession() as s:  # noqa: SIM117
+                async with s.get(version_url, timeout=aiohttp.ClientTimeout(total=5)) as r:
+                    r.raise_for_status()
+                    return await r.json()
+        except Exception:
+            return {}
+
+    @staticmethod
+    def name_from_model_id(model_id: str | None) -> str:
+        """Return a fallback remote name for a given mDNS model identifier.
+
+        Args:
+            model_id: Model string from the ``model`` mDNS property
+                (e.g. ``"UCR2"``, ``"UCR3"``).
+
+        Returns:
+            Human-readable device name, or ``"Unknown Remote"`` if unknown.
+        """
+        normalized_model_id = model_id.lower() if model_id else ""
+        return {
+            "ucr2": "Remote Two",
+            "ucr2-simulator": "Remote Two Simulator",
+            "ucr3": "Remote 3",
+            "ucr3-simulator": "Remote 3 Simulator",
+        }.get(normalized_model_id, "Unknown Remote")
+
+    @classmethod
+    async def resolve_discovery(
+        cls,
+        host: str,
+        port: int,
+        model: str,
+    ) -> dict:
+        """Resolve device name and MAC address from mDNS discovery properties.
+
+        This classmethod does not require credentials. For real hardware it hits
+        ``GET /pub/version`` to obtain the device-assigned name and MAC address.
+        Simulator models are resolved locally without a network call.
+
+        Args:
+            host: IP address or hostname of the device.
+            port: HTTP port of the device.
+            model: Value of the ``model`` mDNS property (e.g. ``"UCR2"``).
+
+        Returns:
+            Dict with keys ``name``, ``mac_address``, ``endpoint``, and
+            ``configuration_url``.
+        """
+        endpoint = f"http://{host}:{port}/api/"
+        configuration_url = f"http://{host}:{port}/configurator/"
+        device_name = cls.name_from_model_id(model)
+        mac_address = ""
+
+        if "simulator" in model.lower():
+            # Simulators share a fixed placeholder MAC and don't need a network call.
+            mac_address = "aabbccddeeff"
+        else:
+            try:
+                version = await cls.get_version_information(endpoint)
+                device_name = version.get("device_name") or device_name
+                mac_address = version.get("address", "").replace(":", "").lower()
+            except Exception:
+                pass
+
+        return {
+            "name": device_name,
+            "mac_address": mac_address,
+            "endpoint": endpoint,
+            "configuration_url": configuration_url,
+        }
+
     # ------------------------------------------------------------------
     # WebSocket
     # ------------------------------------------------------------------
+
+    @property
+    def is_available(self) -> bool:
+        """Whether the Remote is awake and its WebSocket is connected."""
+        return (
+            self._ws_client is not None
+            and self._ws_client.is_connected
+            and self.state.power_mode != PowerMode.SUSPEND
+        )
+
+    @property
+    def last_update_type(self) -> UpdateType:
+        """Type of the most recent state update."""
+        return self._last_update_type
+
+    def on_state_change(self, callback: Callable[[], Coroutine[Any, Any, None]]) -> None:
+        """Register a coroutine callback to be called after any WebSocket state update."""
+        self._state_change_callbacks.append(callback)
 
     async def connect_websocket(self, *, reconnect_delay: float = 10.0) -> None:
         """Start a WebSocket connection and keep it alive automatically.
@@ -258,6 +372,9 @@ class Remote:
             case IRLearningEvent():
                 self._on_ir_learning(event)
 
+        for cb in self._state_change_callbacks:
+            await cb()
+
     # WS event handlers (private, synchronous)
 
     def _on_battery(self, event: BatteryEvent) -> None:
@@ -291,7 +408,11 @@ class Remote:
         )
         for activity in self.activities:
             if activity.id == event.activity_id:
+                activity._set_state(ActivityState.RUNNING)
                 self._apply_included_entities(activity, [event.entity_data])
+        for group in self.activity_groups:
+            if group.contains(event.activity_id):
+                group._recalculate_state()
         self._last_update_type = UpdateType.ACTIVITY
 
     def _on_media_player_attrs(self, event: MediaPlayerAttributesEvent) -> None:
@@ -355,7 +476,21 @@ class Remote:
         except Exception as exc:
             _LOGGER.debug("Remote init: failed to fetch activity groups: %s", exc)
 
+        self._apply_firmware_capabilities()
+
         _LOGGER.debug("Remote init complete for %s", self.endpoint)
+
+    def _apply_firmware_capabilities(self) -> None:
+        """Apply model-and-firmware capability gates absent from older APIs."""
+        if self.device.model_number.upper() != "UCR3":
+            return
+        try:
+            supports_wol = Version(self.device.sw_version) >= Version("2.7.0")
+        except (InvalidVersion, TypeError):
+            supports_wol = False
+        if not supports_wol:
+            self.settings.network.wifi.wake_on_wlan = False
+            self.settings.network.wifi.wake_on_wlan_available = False
 
     async def update(self) -> None:
         """Refresh volatile state (battery, stats, settings, activity states)."""
@@ -529,6 +664,19 @@ class Remote:
             self._entities[entity_id] = MediaPlayerEntity(entity_id, self)
         return self._entities[entity_id]
 
+    async def get_macro(self, entity_id: str) -> Macro:
+        """Fetch a macro by ID."""
+        return Macro(await self.api.get_macro(entity_id), self)
+
+    async def _find_macro_by_name(self, name: str) -> Macro | None:
+        """Look up a macro by name directly from the remote."""
+        macros = await self.api.get_macros(q=name)
+        if not macros:
+            return None
+
+        found = [Macro(data, self) for data in macros]
+        return next((macro for macro in found if macro.name == name), found[0])
+
     def _apply_included_entities(self, activity: Activity, included_entities: list[dict]) -> None:
         """Register media player entities from an activity's included entity list."""
         activity._included_entities = included_entities
@@ -588,7 +736,8 @@ class Remote:
         *,
         activity: str | None = None,
         hold: bool = False,
-        repeat: int = 1,
+        repeat: int | str | None = 1,
+        delay_secs: float | str | None = 0,
     ) -> None:
         """Send a predefined physical button command.
 
@@ -596,9 +745,20 @@ class Remote:
             button: Button identifier (e.g. ``"VOLUME_UP"``).
             activity: Optional activity name to scope the command to.
             hold: Use the long-press mapping instead of short-press.
+            delay_secs: Delay in seconds before each repeated command.
             repeat: Number of times to send the command.
         """
         await self._ensure_awake()
+
+        macro = await self._find_macro_by_name(button)
+        if macro:
+            repeat_count = int(repeat) if repeat is not None else 1
+            delay = float(delay_secs) if delay_secs is not None else 0
+            for _ in range(repeat_count):
+                if delay > 0:
+                    await asyncio.sleep(delay)
+                await macro.run()
+            return
 
         activity_id: str | None = None
         if activity:
@@ -623,7 +783,11 @@ class Remote:
         cmd_id = action.get("cmd_id", "")
         params = action.get("params")
 
-        for _ in range(repeat):
+        repeat_count = int(repeat) if repeat is not None else 1
+        delay = float(delay_secs) if delay_secs is not None else 0
+        for _ in range(repeat_count):
+            if delay > 0:
+                await asyncio.sleep(delay)
             await self.api.put_entity_command(entity_id, cmd_id, params)
 
     # ------------------------------------------------------------------

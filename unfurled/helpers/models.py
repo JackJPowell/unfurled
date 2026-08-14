@@ -58,6 +58,24 @@ class UpdateType(StrEnum):
     NONE = "NONE"
 
 
+class RemoteCommand(StrEnum):
+    """Commands that can be sent to a Remote via ``POST /system?cmd=…``."""
+
+    STANDBY = "STANDBY"
+    REBOOT = "REBOOT"
+    POWER_OFF = "POWER_OFF"
+    RESTART = "RESTART"
+    RESTART_UI = "RESTART_UI"
+    RESTART_CORE = "RESTART_CORE"
+
+
+class DockCommunicationMode(StrEnum):
+    """Transport selected for dock operations."""
+
+    PROXY = "proxy"
+    DIRECT = "direct"
+
+
 class DockCommand(StrEnum):
     """Commands that can be sent directly to a Dock."""
 
@@ -117,6 +135,7 @@ class WiFiSettings:
     """Settings from ``/cfg`` → ``network`` → ``wifi``."""
 
     wake_on_wlan: bool = False
+    wake_on_wlan_available: bool = False
     band: str = "auto"
     scan_interval_sec: int = 15
     ipv4_type: str = "DHCP"
@@ -331,14 +350,14 @@ class RemoteStats:
         """Available memory on the remote."""
         return int(round(self._memory_available))
 
-    @memory_available.setter
-    def memory_available(self, value: float) -> None:
-        self._memory_available = value
-
     @property
     def storage_available(self) -> int:
         """Available storage on the remote."""
         return int(round(self._storage_available))
+
+    @memory_available.setter
+    def memory_available(self, value: float) -> None:
+        self._memory_available = value
 
     @storage_available.setter
     def storage_available(self, value: float) -> None:
@@ -349,14 +368,14 @@ class RemoteStats:
         """Total RAM in MiB."""
         return int(round(self._memory_total))
 
-    @memory_total.setter
-    def memory_total(self, value: float) -> None:
-        self._memory_total = value
-
     @property
     def storage_total(self) -> int:
         """Total user-data storage in MiB."""
         return int(round(self._storage_total))
+
+    @memory_total.setter
+    def memory_total(self, value: float) -> None:
+        self._memory_total = value
 
     @storage_total.setter
     def storage_total(self, value: float) -> None:
@@ -375,6 +394,7 @@ class UpdateInfo:
     release_notes: str = ""
     next_check_date: str = ""
     available: list[dict] = field(default_factory=list)
+    status_loaded: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -553,6 +573,7 @@ def _parse_entity_change(
                     )
             except (KeyError, TypeError):
                 pass
+            return ActivityStateEvent(entity_id=entity_id, state=state)
 
         if state in ("ON", "OFF"):
             included: list[dict] = []

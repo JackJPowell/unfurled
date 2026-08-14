@@ -105,7 +105,7 @@ class WebSocketClient:
     @property
     def is_connected(self) -> bool:
         """``True`` if currently connected."""
-        return self._ws is not None and not self._ws.closed
+        return self._ws is not None
 
     # ------------------------------------------------------------------
     # Internal loop
@@ -208,42 +208,102 @@ class RemoteWebSocketClient(WebSocketClient):
         await self.send(self._SUBSCRIBE_ALL)
 
 
-class DockWebSocketClient(WebSocketClient):
-    """WebSocket client for an Unfolded Circle dock.
+class DockWebSocketError(Exception):
+    """A direct dock WebSocket operation failed."""
 
-    The dock uses a token/password-based auth flow: the server sends an
-    ``auth_required`` message; we reply with the password.
-    """
+
+class DockWebSocketCommandError(DockWebSocketError):
+    """The dock rejected a WebSocket command."""
+
+    def __init__(self, code: int, result: dict[str, Any]) -> None:
+        super().__init__(f"Dock command failed with status {code}")
+        self.code = code
+        self.result = result
+
+
+class DockWebSocketClient(WebSocketClient):
+    """WebSocket client for an authenticated Unfolded Circle dock."""
 
     def __init__(
-        self,
-        ws_url: str,
-        password: str,
-        *,
-        reconnect_delay: float = _RECONNECT_DELAY,
+        self, ws_url: str, password: str, *, reconnect_delay: float = _RECONNECT_DELAY
     ) -> None:
         super().__init__(ws_url, reconnect_delay=reconnect_delay)
         self._password = password
-        # Subscribe to all dock events after auth
-        self._subscribe_payload = {
-            "id": 1,
-            "kind": "req",
-            "msg": "subscribe_events",
-            "msg_data": {"channels": ["all"]},
-        }
+        self._next_request_id = 1
+        self._pending_requests: dict[int, asyncio.Future[dict[str, Any]]] = {}
+        self._authenticated_callbacks: list[ConnectCallback] = []
+        self.on_message(self._handle_response)
+
+    def on_authenticated(self, callback: ConnectCallback) -> None:
+        """Register a callback invoked after each successful authentication."""
+        self._authenticated_callbacks.append(callback)
+
+    async def request(self, command: str, *, timeout: float = 10.0, **data: Any) -> dict[str, Any]:
+        """Send a Dock API command and await its correlated response."""
+        if not self.is_connected:
+            raise DockWebSocketError("Dock WebSocket is not connected")
+        request_id = self._next_request_id
+        self._next_request_id += 1
+        future: asyncio.Future[dict[str, Any]] = asyncio.get_running_loop().create_future()
+        self._pending_requests[request_id] = future
+        try:
+            await self.send({"type": "dock", "id": request_id, "command": command, **data})
+            return await asyncio.wait_for(future, timeout)
+        finally:
+            self._pending_requests.pop(request_id, None)
+
+    async def _handle_response(self, raw: str) -> None:
+        """Resolve pending requests from result and sysinfo messages."""
+        try:
+            data = json.loads(raw)
+        except (TypeError, ValueError):
+            return
+        future = self._pending_requests.get(data.get("req_id"))
+        if future is None or future.done():
+            return
+        code = int(data.get("code", 200))
+        if code >= 400:
+            future.set_exception(DockWebSocketCommandError(code, data))
+        else:
+            future.set_result(data)
 
     async def _on_connected(self, ws: Any) -> None:
-        """Handle the dock auth handshake before forwarding messages."""
-        # The dock may send auth_required as its first message
+        """Authenticate using the Dock API handshake."""
         try:
-            first_msg = await asyncio.wait_for(ws.recv(), timeout=5.0)
-            data = json.loads(first_msg)
-            if data.get("type") == "auth_required":
-                await self.send({"type": "auth", "token": self._password})
-        except TimeoutError:
-            pass  # no auth challenge - proceed
-        except Exception:
-            pass
+            await self._authenticate(ws, self._password, timeout=5.0)
+            for callback in self._authenticated_callbacks:
+                asyncio.create_task(callback())
+        except TimeoutError as err:
+            raise DockWebSocketError("Timed out waiting for dock authentication") from err
+        except (TypeError, ValueError) as err:
+            raise DockWebSocketError("Invalid dock authentication response") from err
 
-        # Now subscribe
-        await self.send(self._subscribe_payload)
+    @staticmethod
+    async def _authenticate(ws: Any, password: str, *, timeout: float) -> None:
+        """Wait for and complete a Dock authentication handshake."""
+        deadline = asyncio.get_running_loop().time() + timeout
+        while True:
+            remaining = deadline - asyncio.get_running_loop().time()
+            if remaining <= 0:
+                raise TimeoutError
+            data = json.loads(await asyncio.wait_for(ws.recv(), timeout=remaining))
+            if data.get("type") != "auth_required":
+                continue
+            await ws.send(json.dumps({"type": "auth", "token": password}))
+            remaining = deadline - asyncio.get_running_loop().time()
+            if remaining <= 0:
+                raise TimeoutError
+            response = json.loads(await asyncio.wait_for(ws.recv(), timeout=remaining))
+            if response.get("code") != 200:
+                raise DockWebSocketError("Dock WebSocket authentication failed")
+            return
+
+    @classmethod
+    async def validate(cls, ws_url: str, password: str, *, timeout: float = 5.0) -> bool:
+        """Return whether *password* is accepted by the dock."""
+        try:
+            async with websockets.connect(ws_url, ping_interval=None, close_timeout=3) as ws:
+                await cls._authenticate(ws, password, timeout=timeout)
+                return True
+        except Exception:
+            return False
