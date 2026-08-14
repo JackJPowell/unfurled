@@ -9,6 +9,7 @@ import pytest
 from aioresponses import aioresponses
 
 from unfurled import Remote
+from unfurled.entities.ir import IREmitter
 from unfurled.helpers.exceptions import RemoteIsSleeping, SystemCommandNotFound
 from unfurled.helpers.models import UpdateType
 
@@ -96,6 +97,24 @@ class TestRemoteUrlNormalization:
         assert r.configuration_url == "http://192.168.1.10/configurator/"
 
 
+class TestRemoteModelName:
+    @pytest.mark.parametrize(
+        ("model_id", "expected_name"),
+        [
+            ("UCR2", "Remote Two"),
+            ("ucr2", "Remote Two"),
+            ("UCR3", "Remote 3"),
+            ("ucr3", "Remote 3"),
+            ("UCR2-simulator", "Remote Two Simulator"),
+            ("UCR3-simulator", "Remote 3 Simulator"),
+            ("unknown", "Unknown Remote"),
+            (None, "Unknown Remote"),
+        ],
+    )
+    def test_name_from_model_id(self, model_id: str | None, expected_name: str):
+        assert Remote.name_from_model_id(model_id) == expected_name
+
+
 class TestRemoteInit:
     async def test_init_populates_basic_info(self, remote: Remote):
         with aioresponses() as m:
@@ -157,6 +176,122 @@ class TestRemoteInit:
         assert remote.device.name == "Living Room Remote"
 
 
+class TestUpdateAndCapabilities:
+    async def test_update_info_uses_available_update_version(self, remote: Remote):
+        remote.device.sw_version = "2.7.0"
+        remote.api.get_system_update = AsyncMock(
+            return_value={
+                "installed_version": "2.7.0",
+                "available": [{"channel": "STABLE", "version": "2.8.0", "description": "Notes"}],
+            }
+        )
+
+        await remote.system._fetch_update_info()
+
+        assert remote.device.sw_version == "2.7.0"
+        assert remote.system.update_info.latest_version == "2.8.0"
+        assert remote.system.update_info.release_notes == "Notes"
+
+    async def test_update_info_reports_installed_version_when_current(self, remote: Remote):
+        remote.device.sw_version = "2.7.0"
+        remote.api.get_system_update = AsyncMock(
+            return_value={"installed_version": "2.7.0", "available": []}
+        )
+
+        await remote.system._fetch_update_info()
+
+        assert remote.system.update_info.latest_version == "2.7.0"
+
+    async def test_force_update_check_uses_put_response(self, remote: Remote):
+        remote.device.sw_version = "2.7.0"
+        remote.api.put_system_update = AsyncMock(
+            return_value={
+                "update_in_progress": True,
+                "update_check_enabled": False,
+                "installed_version": "2.7.0",
+                "available": [{"channel": "STABLE", "version": "2.8.0"}],
+            }
+        )
+        remote.api.get_system_update = AsyncMock()
+
+        await remote.system.force_update_check()
+
+        assert remote.system.update_info.latest_version == "2.8.0"
+        assert remote.system.update_info.in_progress is True
+        assert remote.settings.software_update.check_for_updates is False
+        remote.api.get_system_update.assert_not_awaited()
+
+    async def test_force_update_check_clears_missing_available(self, remote: Remote):
+        remote.device.sw_version = "2.7.0"
+        remote.system.update_info.available = [{"version": "2.8.0"}]
+        remote.system.update_info.latest_version = "2.8.0"
+        remote.api.put_system_update = AsyncMock(
+            return_value={"installed_version": "2.7.0", "update_in_progress": False}
+        )
+
+        await remote.system.force_update_check()
+
+        assert remote.system.update_info.available == []
+        assert remote.system.update_info.latest_version == "2.7.0"
+
+    def test_remote_3_wol_is_gated_by_firmware(self, remote: Remote):
+        remote.device.model_number = "UCR3"
+        remote.device.sw_version = "2.6.9"
+        remote.settings.network.wifi.wake_on_wlan = True
+        remote.settings.network.wifi.wake_on_wlan_available = True
+
+        remote._apply_firmware_capabilities()
+
+        assert remote.settings.network.wifi.wake_on_wlan is False
+        assert remote.settings.network.wifi.wake_on_wlan_available is False
+
+    def test_remote_3_wol_is_available_from_2_7(self, remote: Remote):
+        remote.device.model_number = "UCR3"
+        remote.device.sw_version = "2.7.0"
+        remote.settings.network.wifi.wake_on_wlan_available = True
+
+        remote._apply_firmware_capabilities()
+
+        assert remote.settings.network.wifi.wake_on_wlan_available is True
+
+
+class TestIREmitter:
+    def test_ports_are_preserved(self, remote: Remote):
+        ports = [{"port_id": "1", "name": "Front"}]
+        emitter = IREmitter({"device_id": "dock-1", "ports": ports}, remote)
+
+        assert emitter.ports == ports
+
+    def test_ports_default_to_empty_list(self, remote: Remote):
+        emitter = IREmitter({"device_id": "dock-1"}, remote)
+
+        assert emitter.ports == []
+
+
+class TestManufacturerIR:
+    async def test_resolves_names_case_insensitively_before_sending(self, remote: Remote):
+        emitter = IREmitter({"device_id": "emitter-001", "name": "Remote"}, remote)
+        emitter.send_codeset_command = AsyncMock(return_value=True)
+        remote.ir_emitters.append(emitter)
+        remote.api.get_ir_custom_codes = AsyncMock(return_value=[])
+        remote.api.get_ir_manufacturers = AsyncMock(return_value=[{"id": "lg", "name": "LG"}])
+        remote.api.get_ir_manufacturer_codesets = AsyncMock(
+            return_value=[{"id": "hfwgPmT", "name": "Generic TV 1", "custom": False}]
+        )
+        remote.api.get_ir_manufacturer_codeset_commands = AsyncMock(
+            return_value=["POWER_ON", "POWER_OFF"]
+        )
+
+        assert await remote.ir.send("power_off", device="lG", codeset="generic tv 1")
+
+        remote.api.get_ir_manufacturers.assert_awaited_once_with(q="lG")
+        remote.api.get_ir_manufacturer_codesets.assert_awaited_once_with("lg", q="generic tv 1")
+        remote.api.get_ir_manufacturer_codeset_commands.assert_awaited_once_with("lg", "hfwgPmT")
+        emitter.send_codeset_command.assert_awaited_once_with(
+            "hfwgPmT", "POWER_OFF", port_id=None, repeat=0
+        )
+
+
 class TestWsMessageHandling:
     async def test_battery_message_updates_state(self, remote: Remote):
         await remote._handle_ws_message(
@@ -165,7 +300,7 @@ class TestWsMessageHandling:
         assert remote.state.battery_level == 55
         assert remote.state.battery_status == "CHARGING"
         assert remote.state.is_charging is True
-        assert remote._last_update_type == UpdateType.BATTERY
+        assert remote.last_update_type == UpdateType.BATTERY
 
     async def test_ambient_light_updates_state(self, remote: Remote):
         await remote._handle_ws_message(ws_ambient_light_message(intensity=300))
@@ -197,6 +332,40 @@ class TestWsMessageHandling:
         await remote._handle_ws_message(ws_activity_off_message("act-001"))
         assert remote.activities[0].is_on is False
 
+    async def test_activity_running_link_marks_activity_as_active(self, remote: Remote):
+        from unfurled.entities.activity import Activity
+
+        activity = Activity(
+            {"entity_id": "act-001", "name": {}, "attributes": {"state": "OFF"}}, remote
+        )
+        remote.activities.append(activity)
+        raw = json.dumps(
+            {
+                "msg": "entity_change",
+                "msg_data": {
+                    "entity_type": "activity",
+                    "entity_id": "act-001",
+                    "new_state": {
+                        "attributes": {
+                            "state": "RUNNING",
+                            "step": {
+                                "entity": {"type": "media_player"},
+                                "command": {
+                                    "cmd_id": "media_player.on",
+                                    "entity_id": "media_player.tv",
+                                },
+                            },
+                        }
+                    },
+                },
+            }
+        )
+
+        await remote._handle_ws_message(raw)
+
+        assert activity.state == "RUNNING"
+        assert activity.is_on is True
+
     async def test_configuration_change_updates_display_brightness(self, remote: Remote):
         await remote._handle_ws_message(ws_configuration_change_message(display_brightness=75))
         assert remote.settings.display.brightness == 75
@@ -219,7 +388,7 @@ class TestWsMessageHandling:
         from unfurled.dock import Dock
 
         dock_data = {
-            "entity_id": "emitter-001",
+            "dock_id": "emitter-001",
             "name": "Dock",
             "ws_url": "ws://192.168.1.20:8080/ws",
             "active": True,
@@ -304,6 +473,44 @@ class TestWakeOnLan:
         await remote._ensure_awake()
 
 
+class TestMacros:
+    async def test_macro_name_takes_precedence_over_button(self, remote: Remote):
+        remote._wake_if_asleep = False
+        remote.api.get_macros = AsyncMock(
+            return_value=[
+                {
+                    "entity_id": "uc.main.macro-1",
+                    "name": {"en_US": "PLAY"},
+                    "features": ["run"],
+                }
+            ]
+        )
+        remote.api.put_entity_command = AsyncMock()
+
+        await remote.send_button_command("PLAY")
+
+        remote.api.get_macros.assert_awaited_once_with(q="PLAY")
+        remote.api.put_entity_command.assert_awaited_once_with("uc.main.macro-1", "macro.run")
+
+    async def test_button_command_falls_back_when_macro_is_not_found(self, remote: Remote):
+        from unfurled.entities.activity import Activity
+
+        remote._wake_if_asleep = False
+        remote.activities = [
+            Activity({"entity_id": "act-001", "name": {}, "attributes": {"state": "ON"}}, remote)
+        ]
+        remote.api.get_macros = AsyncMock(return_value=[])
+        remote.api.get_activity_button = AsyncMock(
+            return_value={"short_press": {"entity_id": "entity-1", "cmd_id": "play"}}
+        )
+        remote.api.put_entity_command = AsyncMock()
+
+        await remote.send_button_command("PLAY")
+
+        remote.api.get_activity_button.assert_awaited_once_with("act-001", "PLAY")
+        remote.api.put_entity_command.assert_awaited_once_with("entity-1", "play", None)
+
+
 class TestGetActiveActivities:
     async def test_returns_on_activities(self, remote: Remote):
         from unfurled.entities.activity import Activity
@@ -318,6 +525,28 @@ class TestGetActiveActivities:
 
         assert len(result) == 1
         assert result[0].id == "a1"
+
+
+class TestIntegrationEntities:
+    async def test_get_and_configure_entities_delegate_to_core_api(self, remote: Remote):
+        remote.api.get_integration_entities = AsyncMock(
+            return_value=[{"entity_id": "light.kitchen"}]
+        )
+        remote.api.post_integration_entities = AsyncMock(
+            return_value=["light.kitchen", "media_player.tv"]
+        )
+
+        entities = await remote.integrations.get_entities("hass", reload=True)
+        configured = await remote.integrations.configure_entities(
+            "hass", ["light.kitchen", "media_player.tv"]
+        )
+
+        assert entities == [{"entity_id": "light.kitchen"}]
+        assert configured == ["light.kitchen", "media_player.tv"]
+        remote.api.get_integration_entities.assert_awaited_once_with("hass", reload=True)
+        remote.api.post_integration_entities.assert_awaited_once_with(
+            "hass", ["light.kitchen", "media_player.tv"]
+        )
 
 
 class TestContextManager:

@@ -176,6 +176,21 @@ class TestEndpoints:
             m.put(f"{BASE}entities/media_player.tv/command", payload={"status": "ok"})
             await api.put_entity_command("media_player.tv", "media_player.volume", {"volume": 50})
 
+    async def test_get_macros_supports_search_and_pagination(self, api: CoreAPI):
+        payload = [{"entity_id": "uc.main.macro-1", "name": {"en_US": "Movie Time"}}]
+        url = f"{BASE}macros?limit=50&page=2&q=Movie+Time"
+        with aioresponses() as m:
+            m.get(url, payload=payload)
+            result = await api.get_macros(limit=50, page=2, q="Movie Time")
+        assert result == payload
+
+    async def test_get_macro_encodes_entity_id(self, api: CoreAPI):
+        payload = {"entity_id": "uc.main.macro/1"}
+        with aioresponses() as m:
+            m.get(f"{BASE}macros/uc.main.macro%2F1", payload=payload)
+            result = await api.get_macro("uc.main.macro/1")
+        assert result == payload
+
     async def test_get_pub_version(self, api: CoreAPI):
         payload = {"hostname": "remote", "address": "aa:bb:cc:dd:ee:ff", "os": "2.3.0"}
         with aioresponses() as m:
@@ -204,17 +219,48 @@ class TestEndpoints:
             await api.post_system_command("STANDBY")
 
     async def test_get_docks(self, api: CoreAPI):
-        payload = [{"entity_id": "uc-dock-001", "name": "My Dock"}]
+        payload = [{"dock_id": "uc-dock-001", "name": "My Dock"}]
         with aioresponses() as m:
             m.get(f"{BASE}docks?limit=100", payload=payload)
             result = await api.get_docks()
-        assert result[0]["entity_id"] == "uc-dock-001"
+        assert result[0]["dock_id"] == "uc-dock-001"
 
     async def test_put_ir_send(self, api: CoreAPI):
         with aioresponses() as m:
             m.put(f"{BASE}ir/emitters/emitter-001/send", payload={"status": "ok"})
             result = await api.put_ir_send("emitter-001", {"code": "0x1234", "format": "HEX"})
         assert result is not None
+
+    async def test_get_ir_manufacturer_endpoints(self):
+        received: dict[str, dict[str, str]] = {}
+
+        async def manufacturers(request: web.Request) -> web.Response:
+            received["manufacturers"] = dict(request.query)
+            return web.json_response([{"id": "lg", "name": "LG"}])
+
+        async def codesets(request: web.Request) -> web.Response:
+            received["codesets"] = dict(request.query)
+            return web.json_response([{"id": "hfwgPmT", "name": "Generic TV 1", "custom": False}])
+
+        async def commands(_request: web.Request) -> web.Response:
+            return web.json_response(["POWER_ON", "POWER_OFF"])
+
+        app = web.Application()
+        app.router.add_get("/api/ir/codes/manufacturers", manufacturers)
+        app.router.add_get("/api/ir/codes/manufacturers/lg", codesets)
+        app.router.add_get("/api/ir/codes/manufacturers/lg/hfwgPmT", commands)
+        async with core_test_server(app) as base, CoreAPI(base) as local_api:
+            manufacturers_result = await local_api.get_ir_manufacturers(page=2, q="lg")
+            codesets_result = await local_api.get_ir_manufacturer_codesets("lg", page=2, q="tv")
+            commands_result = await local_api.get_ir_manufacturer_codeset_commands("lg", "hfwgPmT")
+
+        assert received == {
+            "manufacturers": {"limit": "100", "page": "2", "q": "lg"},
+            "codesets": {"limit": "100", "page": "2", "q": "tv"},
+        }
+        assert manufacturers_result == [{"id": "lg", "name": "LG"}]
+        assert codesets_result[0]["id"] == "hfwgPmT"
+        assert commands_result == ["POWER_ON", "POWER_OFF"]
 
     async def test_get_api_keys(self, api: CoreAPI):
         payload = [{"name": "pyUnfoldedCircle", "key_id": "k1"}]
