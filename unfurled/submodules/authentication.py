@@ -38,7 +38,7 @@ class Authentication(RemoteModule):
         """
         data = await self._api.post_api_key(name, ["admin"])
         new_key = data.get("api_key", "")
-        self._remote._api_key = new_key
+        self._remote.set_api_key(new_key)
         return new_key
 
     async def revoke_key(self, name: str = _AUTH_APIKEY_NAME) -> None:
