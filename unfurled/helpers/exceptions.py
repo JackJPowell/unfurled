@@ -74,6 +74,18 @@ class IntegrationNotFound(UnfurledError):
     """Raised when an integration instance cannot be found."""
 
 
+class SetupNotFound(UnfurledError):
+    """Raised when an integration setup session is absent or cancelled."""
+
+
+class IntegrationInstanceAmbiguous(UnfurledError):
+    """Raised when a driver maps to multiple eligible integration instances."""
+
+
+class InvalidEntitySelection(UnfurledError):
+    """Raised when an entity operation is empty or targets unrelated entities."""
+
+
 class SystemCommandNotFound(UnfurledError):
     """Raised when an unrecognised system command is requested."""
 

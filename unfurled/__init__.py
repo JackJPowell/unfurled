@@ -22,12 +22,15 @@ from .helpers.exceptions import (
     DiscoveryError,
     EntityCommandError,
     HTTPError,
+    IntegrationInstanceAmbiguous,
     IntegrationNotFound,
     InvalidButtonCommand,
+    InvalidEntitySelection,
     InvalidIRFormat,
     NoActivityRunning,
     NoEmitterFound,
     RemoteIsSleeping,
+    SetupNotFound,
     SystemCommandNotFound,
     TokenRegistrationError,
     UnfurledError,
@@ -60,13 +63,35 @@ from .helpers.models import (
 )
 from .helpers.websocket import DockWebSocketClient, RemoteWebSocketClient, WebSocketClient
 from .remote import Remote
+from .setup import (
+    CheckboxSetupField,
+    ConfirmationSetupAction,
+    DropdownSetupField,
+    InputSetupAction,
+    IntegrationEntity,
+    IntegrationSetupDefinition,
+    IntegrationSetupSession,
+    LabelSetupField,
+    LocalizedText,
+    NumberSetupField,
+    PasswordSetupField,
+    SetupAction,
+    SetupField,
+    SetupOption,
+    SetupPage,
+    SetupResult,
+    SetupState,
+    TextareaSetupField,
+    TextSetupField,
+    UnknownSetupField,
+)
 from .submodules.authentication import Authentication
 from .submodules.base import RemoteModule
 from .submodules.integrations import Integrations
 from .submodules.settings import Settings
 from .submodules.systems import System
 
-__version__ = "0.3.1"
+__version__ = "0.4.0"
 
 __all__ = [
     # Core
@@ -78,6 +103,8 @@ __all__ = [
     "RemoteModule",
     "Authentication",
     "Integrations",
+    "IntegrationSetupSession",
+    "IntegrationSetupDefinition",
     "Settings",
     "System",
     "IR",
@@ -124,6 +151,24 @@ __all__ = [
     "Feature",
     "VoiceSettings",
     "LocalizationInfo",
+    "LocalizedText",
+    "NumberSetupField",
+    "TextSetupField",
+    "TextareaSetupField",
+    "PasswordSetupField",
+    "CheckboxSetupField",
+    "DropdownSetupField",
+    "LabelSetupField",
+    "UnknownSetupField",
+    "SetupState",
+    "SetupOption",
+    "SetupField",
+    "SetupPage",
+    "SetupAction",
+    "InputSetupAction",
+    "ConfirmationSetupAction",
+    "SetupResult",
+    "IntegrationEntity",
     # Exceptions
     "UnfurledError",
     "HTTPError",
@@ -138,6 +183,9 @@ __all__ = [
     "ApiKeyNotFound",
     "ApiKeyError",
     "IntegrationNotFound",
+    "SetupNotFound",
+    "IntegrationInstanceAmbiguous",
+    "InvalidEntitySelection",
     "SystemCommandNotFound",
     "TokenRegistrationError",
     "DiscoveryError",
