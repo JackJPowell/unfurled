@@ -90,6 +90,27 @@ class TestConfigurationChanges:
 
 
 class TestSettingsUpdates:
+    async def test_refresh_localization_updates_only_the_localization_state(self, remote):
+        remote.api.get_localization_settings = AsyncMock(
+            return_value={
+                "language_code": "de_DE",
+                "country_code": "DE",
+                "time_zone": "Europe/Berlin",
+                "time_format_24h": False,
+                "measurement_unit": "METRIC",
+            }
+        )
+
+        localization = await remote.settings.refresh_localization()
+
+        remote.api.get_localization_settings.assert_awaited_once_with()
+        assert localization is remote.settings.localization
+        assert localization.language_code == "de_DE"
+        assert localization.country_code == "DE"
+        assert localization.time_zone == "Europe/Berlin"
+        assert localization.time_format_24h is False
+        assert localization.measurement_unit == "METRIC"
+
     async def test_update_methods_patch_and_apply_local_state(self, remote):
         remote._ensure_awake = AsyncMock()
         remote.device.sw_version = "2.0.0"
