@@ -18,10 +18,12 @@ from ..setup import (
     IntegrationEntity,
     IntegrationSetupDefinition,
     IntegrationSetupSession,
+    LocalizedName,
     LocalizedText,
     SetupResult,
     SetupState,
     entity_from_core,
+    localized_name_values,
     page_from_core,
     result_from_core,
     string_values,
@@ -87,6 +89,7 @@ class Integrations(RemoteModule):
             driver_id,
             LocalizedText.from_core(driver.get("name")),
             page_from_core(driver.get("setup_data_schema")),
+            raw=dict(driver),
         )
 
     async def start_setup(
@@ -95,7 +98,7 @@ class Integrations(RemoteModule):
         *,
         reconfigure: bool = False,
         setup_data: dict[str, Any] | None = None,
-        name: str | None = None,
+        name: LocalizedName = None,
     ) -> SetupResult:
         """Start an integration driver setup flow.
 
@@ -107,8 +110,8 @@ class Integrations(RemoteModule):
         body: dict[str, Any] = {"driver_id": driver_id, "reconfigure": reconfigure}
         if setup_data is not None:
             body["setup_data"] = string_values(setup_data)
-        if name:
-            body["name"] = {"en": name}
+        if localized_name := localized_name_values(name):
+            body["name"] = localized_name
         return result_from_core(driver_id, await self._api.post_integration_setup(body))
 
     async def get_setup(self, driver_id: str) -> SetupResult:

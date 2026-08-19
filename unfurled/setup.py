@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any, Literal
@@ -62,6 +63,7 @@ class SetupField:
     unit: LocalizedText = field(default_factory=LocalizedText)
     regex: str | None = None
     options: tuple[SetupOption, ...] = ()
+    raw: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -108,6 +110,7 @@ class UnknownSetupField(SetupField):
 class SetupPage:
     title: LocalizedText
     fields: tuple[SetupField, ...]
+    raw: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -117,6 +120,7 @@ class IntegrationSetupDefinition:
     driver_id: str
     name: LocalizedText
     setup_data_schema: SetupPage | None = None
+    raw: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -127,6 +131,7 @@ class SetupAction:
     message1: LocalizedText = field(default_factory=LocalizedText)
     message2: LocalizedText = field(default_factory=LocalizedText)
     image: str | None = None
+    raw: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -147,6 +152,8 @@ class SetupResult:
     action: SetupAction | None = None
     instance_id: str | None = None
     setup_id: str = ""
+    raw_state: str = ""
+    raw: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -159,6 +166,30 @@ class IntegrationEntity:
     device_class: str = ""
     icon: str = ""
     features: tuple[str, ...] = ()
+    raw: dict[str, Any] = field(default_factory=dict)
+
+
+LocalizedName = str | LocalizedText | Mapping[str, str] | None
+
+
+def _raw_core(value: Any) -> dict[str, Any]:
+    """Return a shallow snapshot of a Core object for caller-defined rendering."""
+    return dict(value) if isinstance(value, Mapping) else {}
+
+
+def localized_name_values(value: LocalizedName) -> dict[str, str]:
+    """Convert a caller-provided integration name to Core's localized name shape."""
+    if isinstance(value, LocalizedText):
+        return dict(value.values)
+    if isinstance(value, str):
+        return {"en": value} if value else {}
+    if isinstance(value, Mapping):
+        return {
+            locale: text
+            for locale, text in value.items()
+            if isinstance(locale, str) and isinstance(text, str)
+        }
+    return {}
 
 
 def string_values(values: dict[str, Any] | None) -> dict[str, str]:
@@ -208,14 +239,18 @@ def _field_from_core(setting: Any) -> SetupField | None:
                 label,
                 "" if spec.get("value") is None else str(spec.get("value")),
                 options=options,
+                raw=_raw_core(setting),
             )
         if kind == "checkbox":
-            return field_type(field_id, label, bool(spec.get("value", False)))
+            return field_type(
+                field_id, label, bool(spec.get("value", False)), raw=_raw_core(setting)
+            )
         if kind == "label":
             return field_type(
                 field_id,
                 label,
                 LocalizedText.from_core(spec.get("value")),
+                raw=_raw_core(setting),
             )
         return field_type(
             field_id,
@@ -227,8 +262,9 @@ def _field_from_core(setting: Any) -> SetupField | None:
             decimals=spec.get("decimals"),
             unit=LocalizedText.from_core(spec.get("unit")),
             regex=spec.get("regex") if isinstance(spec.get("regex"), str) else None,
+            raw=_raw_core(setting),
         )
-    return UnknownSetupField(field_id, label)
+    return UnknownSetupField(field_id, label, raw=_raw_core(setting))
 
 
 def page_from_core(value: Any) -> SetupPage | None:
@@ -241,6 +277,7 @@ def page_from_core(value: Any) -> SetupPage | None:
             for setting in value.get("settings", [])
             if (field := _field_from_core(setting)) is not None
         ),
+        raw=_raw_core(value),
     )
 
 
@@ -255,7 +292,9 @@ def result_from_core(driver_id: str, value: Any) -> SetupResult:
     action_value = value.get("require_user_action")
     action: SetupAction | None = None
     if isinstance(action_value, dict) and isinstance(action_value.get("input"), dict):
-        action = InputSetupAction(page=page_from_core(action_value["input"]))
+        action = InputSetupAction(
+            page=page_from_core(action_value["input"]), raw=_raw_core(action_value)
+        )
     elif isinstance(action_value, dict) and isinstance(action_value.get("confirmation"), dict):
         confirmation = action_value["confirmation"]
         action = ConfirmationSetupAction(
@@ -263,6 +302,7 @@ def result_from_core(driver_id: str, value: Any) -> SetupResult:
             message1=LocalizedText.from_core(confirmation.get("message1")),
             message2=LocalizedText.from_core(confirmation.get("message2")),
             image=confirmation.get("image") if isinstance(confirmation.get("image"), str) else None,
+            raw=_raw_core(action_value),
         )
     return SetupResult(
         driver_id,
@@ -270,6 +310,8 @@ def result_from_core(driver_id: str, value: Any) -> SetupResult:
         str(value.get("error") or "NONE"),
         action,
         setup_id=str(value.get("id") or driver_id),
+        raw_state=state_value,
+        raw=_raw_core(value),
     )
 
 
@@ -289,6 +331,7 @@ def entity_from_core(value: Any) -> IntegrationEntity | None:
         str(value.get("device_class") or ""),
         str(value.get("icon") or ""),
         tuple(str(feature) for feature in value.get("features", []) if isinstance(feature, str)),
+        raw=_raw_core(value),
     )
 
 
@@ -307,7 +350,7 @@ class IntegrationSetupSession:
         *,
         setup_data: dict[str, Any] | None = None,
         reconfigure: bool = False,
-        name: str | None = None,
+        name: LocalizedName = None,
     ) -> SetupResult:
         return await self._integrations.start_setup(
             self.driver_id, setup_data=setup_data, reconfigure=reconfigure, name=name
