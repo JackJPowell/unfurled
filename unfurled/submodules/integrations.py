@@ -13,6 +13,7 @@ from ..helpers.exceptions import (
     IntegrationNotFound,
     InvalidEntitySelection,
     SetupNotFound,
+    SetupTimeout,
 )
 from ..setup import (
     IntegrationEntity,
@@ -145,7 +146,7 @@ class Integrations(RemoteModule):
                 raise SetupNotFound(f"No active setup for driver '{driver_id}'") from error
             raise
 
-    async def wait_for_setup(
+    async def wait_for_update(
         self,
         driver_id: str,
         preferred_instance_id: str | None = None,
@@ -153,35 +154,52 @@ class Integrations(RemoteModule):
         attempts: int = 30,
         interval: float = 0.75,
     ) -> SetupResult:
-        """Read setup status, recovering success after Core removes its session."""
+        """Wait for a setup result that requires caller action or is terminal.
+
+        Core can report ``SETUP`` while the integration driver processes the
+        previous request. This method polls through that transient state, but
+        returns immediately for ``WAIT_USER_ACTION``, ``ERROR``, or a resolved
+        ``OK`` result. It also recovers completion when Core has already
+        removed the setup session.
+        """
+        if attempts < 1:
+            raise ValueError("attempts must be at least 1")
+        if interval < 0:
+            raise ValueError("interval must be non-negative")
+
         for attempt in range(attempts):
             try:
                 result = await self.get_setup(driver_id)
-                if result.state != SetupState.OK:
+                if result.state == SetupState.WAIT_USER_ACTION:
                     return result
-                instance_id = await self.resolve_instance(driver_id, preferred_instance_id)
-                return replace(result, instance_id=instance_id)
+                if result.state == SetupState.ERROR:
+                    return result
+                if result.state == SetupState.OK:
+                    try:
+                        instance_id = await self.resolve_instance(driver_id, preferred_instance_id)
+                    except IntegrationNotFound:
+                        pass
+                    else:
+                        return replace(result, instance_id=instance_id)
             except SetupNotFound:
                 active = await self._api.get_integration_setups()
-                if driver_id in active:
-                    if attempt + 1 < attempts:
-                        await asyncio.sleep(interval)
-                        continue
-                    raise
-                try:
-                    instance_id = await self.resolve_instance(driver_id, preferred_instance_id)
-                except IntegrationNotFound:
-                    if attempt + 1 < attempts:
-                        await asyncio.sleep(interval)
-                        continue
-                    raise
-                return SetupResult(
-                    driver_id,
-                    state=SetupState.OK,
-                    instance_id=instance_id,
-                    setup_id=driver_id,
-                )
-        raise SetupNotFound(f"No active setup for driver '{driver_id}'")
+                if driver_id not in active:
+                    try:
+                        instance_id = await self.resolve_instance(driver_id, preferred_instance_id)
+                    except IntegrationNotFound:
+                        pass
+                    else:
+                        return SetupResult(
+                            driver_id,
+                            state=SetupState.OK,
+                            instance_id=instance_id,
+                            setup_id=driver_id,
+                        )
+            if attempt + 1 < attempts:
+                await asyncio.sleep(interval)
+        raise SetupTimeout(
+            f"No actionable setup update for driver '{driver_id}' after {attempts} attempts"
+        )
 
     async def resolve_instance(
         self, driver_id: str, preferred_instance_id: str | None = None

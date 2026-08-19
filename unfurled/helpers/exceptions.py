@@ -78,6 +78,10 @@ class SetupNotFound(UnfurledError):
     """Raised when an integration setup session is absent or cancelled."""
 
 
+class SetupTimeout(UnfurledError):
+    """Raised when a setup does not produce an actionable update in time."""
+
+
 class IntegrationInstanceAmbiguous(UnfurledError):
     """Raised when a driver maps to multiple eligible integration instances."""
 

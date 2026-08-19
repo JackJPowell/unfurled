@@ -368,10 +368,11 @@ class IntegrationSetupSession:
     async def cancel(self) -> None:
         await self._integrations.cancel_setup(self.driver_id)
 
-    async def wait_for_completion(
+    async def wait_for_update(
         self, *, attempts: int = 30, interval: float = 0.75
     ) -> SetupResult:
-        return await self._integrations.wait_for_setup(
+        """Wait until Core requires user action or reaches a terminal state."""
+        return await self._integrations.wait_for_update(
             self.driver_id, self.instance_id, attempts=attempts, interval=interval
         )
 
