@@ -8,7 +8,7 @@ from unfurled.helpers.exceptions import (
     HTTPError,
     IntegrationInstanceAmbiguous,
     InvalidEntitySelection,
-    SetupNotFound,
+    SetupTimeout,
 )
 from unfurled.setup import (
     ConfirmationSetupAction,
@@ -108,7 +108,7 @@ async def test_session_recovers_completion_when_core_removes_setup():
         return_value=[{"driver_id": "demo", "integration_id": "demo.main"}]
     )
 
-    result = await integrations.setup("demo").wait_for_completion(attempts=1)
+    result = await integrations.setup("demo").wait_for_update(attempts=1)
 
     assert result.state == "OK"
     assert result.instance_id == "demo.main"
@@ -145,6 +145,26 @@ async def test_entity_methods_paginate_and_validate_removal():
         await integrations.add_entities("demo.main", [])
     with pytest.raises(InvalidEntitySelection):
         await integrations.add_entities("demo.main", ["light.missing"])
+
+
+@pytest.mark.asyncio
+async def test_wait_for_update_polls_setup_until_core_requires_user_action():
+    integrations, remote = _integrations()
+    remote.api.get_integration_setup = AsyncMock(
+        side_effect=[
+            {"state": "SETUP"},
+            {
+                "state": "WAIT_USER_ACTION",
+                "require_user_action": {"confirmation": {"title": {"en": "Continue"}}},
+            },
+        ]
+    )
+
+    result = await integrations.setup("demo").wait_for_update(attempts=2, interval=0)
+
+    assert result.state == SetupState.WAIT_USER_ACTION
+    assert result.action
+    assert remote.api.get_integration_setup.await_count == 2
 
 
 def test_setup_models_parse_every_core_field_and_localization_variant():
@@ -266,7 +286,7 @@ async def test_start_setup_accepts_localized_name_without_changing_string_caller
 
 
 @pytest.mark.asyncio
-async def test_session_delegates_all_setup_actions_and_rejects_active_setup_404():
+async def test_session_delegates_all_setup_actions_and_times_out_for_active_setup_404():
     integrations, remote = _integrations()
     remote.api.post_integration_setup = AsyncMock(return_value={"id": "demo", "state": "SETUP"})
     remote.api.get_integration_setup = AsyncMock(side_effect=HTTPError(404, "missing"))
@@ -279,8 +299,8 @@ async def test_session_delegates_all_setup_actions_and_rejects_active_setup_404(
     await session.submit({"enabled": True})
     await session.confirm(False)
     await session.cancel()
-    with pytest.raises(SetupNotFound):
-        await session.wait_for_completion(attempts=1)
+    with pytest.raises(SetupTimeout):
+        await session.wait_for_update(attempts=1)
 
     remote.api.post_integration_setup.assert_awaited_once_with(
         {"driver_id": "demo", "reconfigure": True}
