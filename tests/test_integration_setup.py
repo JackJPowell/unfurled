@@ -61,6 +61,10 @@ async def test_start_setup_parses_typed_dynamic_input_page():
     assert result.action and result.action.page
     assert result.action.page.title.text("en_US") == "Connect"
     assert result.action.page.fields[1].value is True
+    assert result.raw["require_user_action"] == remote.api.post_integration_setup.return_value[
+        "require_user_action"
+    ]
+    assert result.action.raw == result.raw["require_user_action"]
     remote.api.post_integration_setup.assert_awaited_once_with(
         {
             "driver_id": "demo",
@@ -90,6 +94,9 @@ async def test_setup_definition_parses_driver_metadata_into_a_typed_model():
     assert definition.name.text() == "Demo"
     assert definition.setup_data_schema
     assert definition.setup_data_schema.title.text() == "Initial setup"
+    assert definition.raw["setup_data_schema"] == remote.api.get_driver.return_value[
+        "setup_data_schema"
+    ]
 
 
 @pytest.mark.asyncio
@@ -129,6 +136,7 @@ async def test_entity_methods_paginate_and_validate_removal():
     removed = await integrations.remove_entities("demo.main", ["light.kitchen"])
 
     assert available[0].name.text() == "Kitchen"
+    assert available[0].raw["entity_id"] == "light.kitchen"
     assert configured[0].id == "light.kitchen"
     assert added == ["light.kitchen"]
     assert removed == ["light.kitchen"]
@@ -203,6 +211,12 @@ def test_setup_models_parse_every_core_field_and_localization_variant():
     assert page.fields[5].options[0].label.text() == "A"
     assert isinstance(page.fields[6].value, LocalizedText)
     assert page.fields[6].value.text() == "Read this"
+    assert page.raw["title"] == {"en": "Setup", "de": "Einrichtung"}
+    assert page.fields[-1].raw == {
+        "id": "other",
+        "label": {"en": "Other"},
+        "field": {"unsupported": {}},
+    }
 
 
 def test_setup_result_parses_confirmation_and_invalid_states_safely():
@@ -225,7 +239,30 @@ def test_setup_result_parses_confirmation_and_invalid_states_safely():
     assert isinstance(result.action, ConfirmationSetupAction)
     assert result.action.title.text() == "Continue?"
     assert result.action.image == "https://example.test/image.png"
-    assert result_from_core("demo", {"state": "future"}).state == SetupState.ERROR
+    future = result_from_core(
+        "demo",
+        {"state": "future", "require_user_action": {"oauth": {"url": "https://example.test"}}},
+    )
+    assert future.state == SetupState.ERROR
+    assert future.raw_state == "future"
+    assert future.action is None
+    assert future.raw["require_user_action"] == {"oauth": {"url": "https://example.test"}}
+
+
+@pytest.mark.asyncio
+async def test_start_setup_accepts_localized_name_without_changing_string_callers():
+    integrations, remote = _integrations()
+    remote.api.post_integration_setup = AsyncMock(return_value={"state": "SETUP"})
+
+    await integrations.start_setup("demo", name={"en": "Demo", "de": "Beispiel"})
+
+    remote.api.post_integration_setup.assert_awaited_once_with(
+        {
+            "driver_id": "demo",
+            "reconfigure": False,
+            "name": {"en": "Demo", "de": "Beispiel"},
+        }
+    )
 
 
 @pytest.mark.asyncio
