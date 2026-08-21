@@ -376,11 +376,26 @@ class TestEndpoints:
 
     async def test_setup_lifecycle_endpoints(self, api: CoreAPI):
         with aioresponses() as m:
+            m.get(f"{BASE}intg/setup", payload=["demo"])
+            m.post(f"{BASE}intg/setup", payload={"id": "demo", "state": "SETUP"})
             m.get(f"{BASE}intg/setup/demo", payload={"state": "WAIT_USER_ACTION"})
             m.delete(f"{BASE}intg/setup/demo", status=204, body="")
+            active = await api.get_integration_setups()
+            started = await api.post_integration_setup({"driver_id": "demo"})
             setup = await api.get_integration_setup("demo")
             await api.delete_integration_setup("demo")
+        assert active == ["demo"]
+        assert started == {"id": "demo", "state": "SETUP"}
         assert setup["state"] == "WAIT_USER_ACTION"
+
+    async def test_global_entity_paging_and_deletion(self, api: CoreAPI):
+        url = f"{BASE}entities?limit=50&intg_ids=demo.one%2Cdemo.two&page=2"
+        with aioresponses() as m:
+            m.get(url, payload=[{"entity_id": "light.kitchen"}])
+            m.delete(f"{BASE}entities", status=204, body="")
+            entities = await api.get_entities(50, integration_ids=["demo.one", "demo.two"], page=2)
+            await api.delete_entities(["light.kitchen"])
+        assert entities == [{"entity_id": "light.kitchen"}]
 
     async def test_setup_confirmation_and_validation(self, api: CoreAPI):
         with aioresponses() as m:

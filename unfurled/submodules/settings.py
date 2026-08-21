@@ -65,6 +65,15 @@ class Settings(RemoteModule):
         """Return ``True`` if the remote's built-in IR emitter is enabled."""
         return any(f.id == "internal_ir" and f.enabled for f in self.features)
 
+    async def refresh_localization(self) -> LocalizationInfo:
+        """Fetch and store the Remote's current localization settings.
+
+        This lightweight refresh is useful for clients that only need the
+        display locale and do not need to run :meth:`Remote.init`.
+        """
+        self._update_localization(await self._api.get_localization_settings())
+        return self.localization
+
     # ------------------------------------------------------------------
     # Locale helper
     # ------------------------------------------------------------------
@@ -93,6 +102,30 @@ class Settings(RemoteModule):
                 return v
 
         return default_text
+
+    def _update_localization(
+        self, localization: dict, *, defaults: bool = False
+    ) -> None:
+        """Apply Core localization data without replacing omitted values."""
+        if not isinstance(localization, dict):
+            return
+        self.localization.language_code = localization.get(
+            "language_code", "en_US" if defaults else self.localization.language_code
+        )
+        self.localization.country_code = localization.get(
+            "country_code", "US" if defaults else self.localization.country_code
+        )
+        self.localization.time_zone = localization.get(
+            "time_zone", "UTC" if defaults else self.localization.time_zone
+        )
+        self.localization.time_format_24h = bool(
+            localization.get(
+                "time_format_24h", True if defaults else self.localization.time_format_24h
+            )
+        )
+        self.localization.measurement_unit = localization.get(
+            "measurement_unit", "METRIC" if defaults else self.localization.measurement_unit
+        )
 
     def _on_configuration_change(self, event: ConfigurationChangeEvent) -> None:
         state = event.new_state
@@ -160,17 +193,7 @@ class Settings(RemoteModule):
                 )
 
         if loc := state.get("localization"):
-            self.localization.language_code = loc.get(
-                "language_code", self.localization.language_code
-            )
-            self.localization.country_code = loc.get("country_code", self.localization.country_code)
-            self.localization.time_zone = loc.get("time_zone", self.localization.time_zone)
-            self.localization.time_format_24h = bool(
-                loc.get("time_format_24h", self.localization.time_format_24h)
-            )
-            self.localization.measurement_unit = loc.get(
-                "measurement_unit", self.localization.measurement_unit
-            )
+            self._update_localization(loc)
 
         if bt := state.get("bt"):
             self.bluetooth.peripheral_connections = bt.get(
@@ -277,12 +300,7 @@ class Settings(RemoteModule):
         self.software_update.channel = sw.get("channel", "STABLE")
 
         # Localization
-        loc = data.get("localization", {})
-        self.localization.language_code = loc.get("language_code", "en_US")
-        self.localization.country_code = loc.get("country_code", "US")
-        self.localization.time_zone = loc.get("time_zone", "UTC")
-        self.localization.time_format_24h = bool(loc.get("time_format_24h", True))
-        self.localization.measurement_unit = loc.get("measurement_unit", "METRIC")
+        self._update_localization(data.get("localization", {}), defaults=True)
 
         # Bluetooth
         bt = data.get("bt", {})
