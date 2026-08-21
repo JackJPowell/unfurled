@@ -6,7 +6,7 @@ import json
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from .api import CoreAPI
 from .helpers.exceptions import HTTPError
@@ -128,12 +128,12 @@ class Dock:
             name=data.get("name", ""),
             ws_url=data.get("ws_url") or data.get("resolved_ws_url", ""),
             is_active=data.get("active", False),
-            model_number=data.get("model_number", ""),
-            hardware_revision=data.get("hardware_revision", ""),
-            serial_number=data.get("serial_number", ""),
+            model_number=data.get("model_number") or data.get("model", ""),
+            serial_number=data.get("serial_number") or data.get("serial", ""),
+            hardware_revision=data.get("hardware_revision") or data.get("revision", ""),
+            software_version=data.get("software_version") or data.get("version", ""),
             led_brightness=data.get("led_brightness", 0),
             ethernet_led_brightness=data.get("ethernet_led_brightness", 0),
-            software_version=data.get("software_version", ""),
             state=data.get("state", ""),
             is_learning_active=data.get("learning_active", False),
         )
@@ -293,7 +293,7 @@ class Dock:
         if msg_type == "ir_learn":
             self._learned_code = data.get("msg_data", {})
 
-    async def _direct_request(self, command: str, **data: object) -> dict:
+    async def _direct_request(self, command: str, **data: Any) -> dict:
         """Issue a direct Dock API request."""
         if self._ws_client is None:
             raise DockWebSocketError("Dock WebSocket is not configured")
@@ -303,7 +303,7 @@ class Dock:
         """Return whether proxy fallback is currently safe to attempt."""
         return self._proxy_available()
 
-    async def _proxy_command(self, command: DockCommand, **params: object) -> dict:
+    async def _proxy_command(self, command: DockCommand, **params: int) -> dict:
         body: dict[str, str] = {"command": command.value}
         if params:
             value = next(iter(params.values()))
@@ -312,7 +312,7 @@ class Dock:
             body["value"] = str(value)
         return await self.api.post_dock_command(self.device.id, body)
 
-    async def _direct_command(self, command: DockCommand, **params: object) -> dict:
+    async def _direct_command(self, command: DockCommand, **params: int) -> dict:
         if command is DockCommand.SET_LED_BRIGHTNESS:
             brightness = _brightness_native(int(params["brightness"]))
             return await self._direct_request(
@@ -322,7 +322,7 @@ class Dock:
             {DockCommand.IDENTIFY: "identify", DockCommand.REBOOT: "reboot"}[command]
         )
 
-    async def send_command(self, command: DockCommand, **params: object) -> dict:
+    async def send_command(self, command: DockCommand, **params: int) -> dict:
         """Send a dock system command using the selected transport."""
         if self.direct_communication:
             try:
@@ -724,7 +724,7 @@ class System:
         """Shortcut to the parent remote's :class:`~unfurled.api.CoreAPI` client."""
         return self._dock.api
 
-    async def _send_command(self, command: DockCommand, **params: object) -> dict:
+    async def _send_command(self, command: DockCommand, **params: int) -> dict:
         """Send a control command to the dock via the remote's API.
 
         Args:

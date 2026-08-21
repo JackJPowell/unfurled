@@ -515,6 +515,21 @@ class CoreAPI:
         """DELETE /entities  with a JSON body of entity IDs."""
         await self._delete("entities", json={"entity_ids": entity_ids})
 
+    async def get_entities(
+        self,
+        limit: int = 100,
+        *,
+        integration_ids: list[str] | None = None,
+        page: int | None = None,
+    ) -> list[dict]:
+        """GET /entities, optionally limited to integration instance IDs."""
+        params: dict[str, str | int] = {"limit": limit}
+        if integration_ids:
+            params["intg_ids"] = ",".join(integration_ids)
+        if page is not None:
+            params["page"] = page
+        return await self._get("entities", params=params)
+
     # ------------------------------------------------------------------
     # IR / remotes / codesets
     # ------------------------------------------------------------------
@@ -798,6 +813,10 @@ class CoreAPI:
     async def post_integration_setup(self, body: dict) -> dict:
         """POST /intg/setup"""
         return await self._post("intg/setup", json=body)
+
+    async def get_integration_setups(self) -> list[str]:
+        """GET /intg/setup, returning IDs of active setup sessions."""
+        return await self._get("intg/setup")
 
     async def get_integration_setup(self, driver_id: str) -> dict:
         """GET /intg/setup/{driver_id}"""
