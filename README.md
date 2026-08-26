@@ -192,12 +192,16 @@ await remote.auth.set_external_token(
 ### Authentication / API Keys
 
 ```python
-# Create a persistent API key
-key = await remote.auth.create_key()
-print(key["api_key"])
+# Generate an admin API key and make it the active key for this Remote.
+# A same-named unfurled key is safely replaced.
+api_key = await remote.auth.generate_key()
+print(api_key)
 
-# Revoke a key
-await remote.auth.revoke_key(key["key_id"])
+# Create another key without replacing an existing one
+key = await remote.auth.create_key("Home Assistant")
+
+# Revoke a key by name
+await remote.auth.revoke_key("Home Assistant")
 ```
 
 ### Firmware Updates
