@@ -10,7 +10,7 @@ from aioresponses import aioresponses
 
 from unfurled import Remote
 from unfurled.entities.ir import IREmitter
-from unfurled.helpers.exceptions import RemoteIsSleeping, SystemCommandNotFound
+from unfurled.helpers.exceptions import InvalidIRFormat, RemoteIsSleeping, SystemCommandNotFound
 from unfurled.helpers.models import UpdateType
 
 from .conftest import (
@@ -266,6 +266,31 @@ class TestIREmitter:
         emitter = IREmitter({"device_id": "dock-1"}, remote)
 
         assert emitter.ports == []
+
+
+class TestIRConversion:
+    async def test_convert_infers_pronto_format_and_forwards_repeat(self, remote: Remote):
+        remote._ensure_awake = AsyncMock()
+        remote.api.get_ir_convert = AsyncMock(return_value={"raw": [560], "frequency": 38000})
+
+        result = await remote.ir.convert("0000 006D 0000 0001", repeat=2)
+
+        assert result == {"raw": [560], "frequency": 38000}
+        remote.api.get_ir_convert.assert_awaited_once_with(
+            "PRONTO", "0000 006D 0000 0001", repeat=2
+        )
+
+    async def test_convert_accepts_an_explicit_format(self, remote: Remote):
+        remote._ensure_awake = AsyncMock()
+        remote.api.get_ir_convert = AsyncMock(return_value={"raw": [560]})
+
+        await remote.ir.convert("custom code", format="HEX")
+
+        remote.api.get_ir_convert.assert_awaited_once_with("HEX", "custom code", repeat=None)
+
+    async def test_convert_rejects_unrecognised_code_without_a_format(self, remote: Remote):
+        with pytest.raises(InvalidIRFormat, match="Raw IR code"):
+            await remote.ir.convert("custom code")
 
 
 class TestManufacturerIR:

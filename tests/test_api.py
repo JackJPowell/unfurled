@@ -231,6 +231,33 @@ class TestEndpoints:
             result = await api.put_ir_send("emitter-001", {"code": "0x1234", "format": "HEX"})
         assert result is not None
 
+    async def test_get_ir_convert_encodes_code_and_passes_conversion_options(self):
+        received: dict[str, str] = {}
+
+        async def convert(request: web.Request) -> web.Response:
+            received.update(request.query)
+            return web.json_response({"raw": [560, 1680], "frequency": 38000})
+
+        app = web.Application()
+        app.router.add_get("/api/ir/convert/PRONTO", convert)
+        async with core_test_server(app) as base, CoreAPI(base) as local_api:
+            result = await local_api.get_ir_convert(
+                "pronto", "0000 006D;0000,0010", repeat=2, to="raw"
+            )
+
+        assert received == {"code": "0000 006D;0000,0010", "repeat": "2", "to": "RAW"}
+        assert result == {"raw": [560, 1680], "frequency": 38000}
+
+    @pytest.mark.parametrize(
+        ("ir_format", "to", "match"),
+        [("LIRC", "RAW", "ir_format"), ("HEX", "PRONTO", "Only conversion")],
+    )
+    async def test_get_ir_convert_validates_supported_formats(
+        self, api: CoreAPI, ir_format: str, to: str, match: str
+    ):
+        with pytest.raises(ValueError, match=match):
+            await api.get_ir_convert(ir_format, "code", to=to)
+
     async def test_get_ir_manufacturer_endpoints(self):
         received: dict[str, dict[str, str]] = {}
 
