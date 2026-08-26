@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from aioresponses import aioresponses
 
-from unfurled import Remote
+from unfurled import IRFormat, Remote
 from unfurled.entities.ir import IREmitter
 from unfurled.helpers.exceptions import InvalidIRFormat, RemoteIsSleeping, SystemCommandNotFound
 from unfurled.helpers.models import UpdateType
@@ -284,7 +284,7 @@ class TestIRConversion:
         remote._ensure_awake = AsyncMock()
         remote.api.get_ir_convert = AsyncMock(return_value={"raw": [560]})
 
-        await remote.ir.convert("custom code", format="HEX")
+        await remote.ir.convert("custom code", format=IRFormat.HEX)
 
         remote.api.get_ir_convert.assert_awaited_once_with("HEX", "custom code", repeat=None)
 
