@@ -15,7 +15,7 @@ class Authentication(RemoteModule):
 
     Example::
 
-        key = await remote.auth.create_key()
+        key = await remote.auth.generate_key()
         await remote.auth.set_external_token("hass", "ws-ha-api", token)
     """
 
@@ -27,19 +27,35 @@ class Authentication(RemoteModule):
         """Return all API keys registered on the remote."""
         return await self._api.get_api_keys()
 
-    async def create_key(self, name: str = _AUTH_APIKEY_NAME) -> str:
+    async def create_key(
+        self,
+        name: str = _AUTH_APIKEY_NAME,
+        *,
+        replace_existing: bool = False,
+    ) -> str:
         """Create a new API key and update the remote's active key.
 
         Args:
             name: Human-readable name for the key.
+            replace_existing: Delete keys with the same name before creating
+                the new key.
 
         Returns:
             The new API key string.
         """
-        data = await self._api.post_api_key(name, ["admin"])
+        data = await self._api.create_api_key(name, ["admin"], replace_existing=replace_existing)
         new_key = data.get("api_key", "")
         self._remote.set_api_key(new_key)
         return new_key
+
+    async def generate_key(self, name: str = _AUTH_APIKEY_NAME) -> str:
+        """Generate a fresh admin API key, replacing a same-named key.
+
+        The Core API only returns an API key's secret when it is created, so
+        an existing key cannot be retrieved. This method removes a previous
+        key with the requested name and returns a new secret instead.
+        """
+        return await self.create_key(name, replace_existing=True)
 
     async def revoke_key(self, name: str = _AUTH_APIKEY_NAME) -> None:
         """Revoke the API key with the given name.

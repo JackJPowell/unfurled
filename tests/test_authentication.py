@@ -12,14 +12,25 @@ from unfurled.helpers.exceptions import ApiKeyError, ApiKeyNotFound, HTTPError
 class TestApiKeys:
     async def test_list_and_create_key_updates_both_remote_and_api(self, remote):
         remote.api.get_api_keys = AsyncMock(return_value=[{"key_id": "old", "name": "Old"}])
-        remote.api.post_api_key = AsyncMock(return_value={"api_key": "new-key"})
+        remote.api.create_api_key = AsyncMock(return_value={"api_key": "new-key"})
 
         assert await remote.auth.list_keys() == [{"key_id": "old", "name": "Old"}]
         assert await remote.auth.create_key("Coverage") == "new-key"
 
-        remote.api.post_api_key.assert_awaited_once_with("Coverage", ["admin"])
+        remote.api.create_api_key.assert_awaited_once_with(
+            "Coverage", ["admin"], replace_existing=False
+        )
         assert remote._api_key == "new-key"
         assert remote.api._api_key == "new-key"
+
+    async def test_generate_key_replaces_an_existing_key_with_the_default_name(self, remote):
+        remote.api.create_api_key = AsyncMock(return_value={"api_key": "new-key"})
+
+        assert await remote.auth.generate_key() == "new-key"
+
+        remote.api.create_api_key.assert_awaited_once_with(
+            "pyUnfoldedCircle", ["admin"], replace_existing=True
+        )
 
     async def test_revoke_key_deletes_matching_key(self, remote):
         remote.api.get_api_keys = AsyncMock(return_value=[{"key_id": "key-1", "name": "Coverage"}])
