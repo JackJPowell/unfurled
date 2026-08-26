@@ -166,6 +166,10 @@ await remote.ir.send_from_codeset("Samsung TV", "VOLUME_UP")
 # List available emitters
 for e in remote.ir.emitters:
     print(e.name, e.device_id)
+
+# Convert a PRONTO or HEX code to raw timings for inspection or reuse
+converted = await remote.ir.convert("0000 006C ...", repeat=1)
+print(converted["raw"], converted["frequency"])
 ```
 
 ### Integrations / External Systems
