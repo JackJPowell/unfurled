@@ -19,6 +19,7 @@ from urllib.parse import quote, urljoin, urlsplit
 import aiohttp
 
 from .helpers.exceptions import AuthenticationError, ConnectionError, HTTPError
+from .helpers.models import IRFormat
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -541,6 +542,31 @@ class CoreAPI:
     async def put_ir_send(self, emitter_id: str, body: dict) -> dict:
         """PUT /ir/emitters/{id}/send"""
         return await self._put(f"ir/emitters/{self._path_segment(emitter_id)}/send", json=body)
+
+    async def get_ir_convert(
+        self,
+        ir_format: IRFormat | str,
+        code: str,
+        *,
+        repeat: int | None = None,
+        to: str = "RAW",
+    ) -> dict:
+        """GET /ir/convert/{format}, converting a HEX or PRONTO code to RAW timings."""
+        ir_format = ir_format.upper()
+        to = to.upper()
+        if ir_format not in {"HEX", "PRONTO"}:
+            raise ValueError("ir_format must be 'HEX' or 'PRONTO'")
+        if to != "RAW":
+            raise ValueError("Only conversion to 'RAW' is currently supported")
+        if repeat is not None and (
+            not isinstance(repeat, int) or isinstance(repeat, bool) or repeat < 0
+        ):
+            raise ValueError("repeat must be a non-negative integer")
+
+        params: dict[str, str | int] = {"code": code, "to": to}
+        if repeat is not None:
+            params["repeat"] = repeat
+        return await self._get(f"ir/convert/{ir_format}", params=params)
 
     async def get_ir_custom_codes(self, limit: int = 100, *, page: int | None = None) -> list[dict]:
         """GET /ir/codes/custom, optionally selecting a result page."""

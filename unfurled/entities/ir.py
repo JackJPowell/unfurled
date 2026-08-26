@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from ..helpers.exceptions import InvalidIRFormat, NoEmitterFound
+from ..helpers.models import IRFormat
 from ..submodules.base import RemoteModule
 
 if TYPE_CHECKING:
@@ -322,6 +323,30 @@ class IR(RemoteModule):
             repeat=repeat,
             dock=dock,
         )
+
+    async def convert(
+        self,
+        code: str,
+        *,
+        format: IRFormat | str | None = None,
+        repeat: int | None = None,
+    ) -> dict:
+        """Convert a raw HEX or Pronto code to IR timings.
+
+        The code format is inferred when possible.  Supply ``format`` as
+        :class:`~unfurled.IRFormat` (or ``"HEX"`` / ``"PRONTO"``) when the
+        code cannot be inferred.  For Pronto codes with a repeat sequence,
+        ``repeat`` controls how many times that sequence is decoded.
+        """
+        if format is None:
+            raw_command = self._parse_raw_command(code)
+            if raw_command is None:
+                raise InvalidIRFormat("Raw IR code must be Pronto or UC HEX format")
+            _, format = raw_command
+
+        await self._ensure_awake()
+        ir_format = format.value if isinstance(format, IRFormat) else format
+        return await self._remote.api.get_ir_convert(ir_format, code, repeat=repeat)
 
     @staticmethod
     def _parse_raw_command(command: str) -> tuple[str, str] | None:

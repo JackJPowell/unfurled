@@ -84,6 +84,13 @@ class DockCommand(StrEnum):
     REBOOT = "REBOOT"
 
 
+class IRFormat(StrEnum):
+    """Source formats supported by the IR conversion API."""
+
+    HEX = "HEX"
+    PRONTO = "PRONTO"
+
+
 # ---------------------------------------------------------------------------
 # Settings dataclasses (mirrors GET /cfg response)
 # ---------------------------------------------------------------------------
