@@ -68,8 +68,29 @@ jobs:
           name: dist
           path: dist/
 
+      - name: Extract release notes from changelog
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          version="${TAG#v}"
+          awk -v version="$version" '
+            index($0, "## [" version "]") == 1 {
+              if (found) exit
+              found = 1
+            }
+            found { print }
+            END {
+              if (!found) {
+                print "No changelog entry found for " version > "/dev/stderr"
+                exit 1
+              }
+            }
+          ' CHANGELOG.md > RELEASE_NOTES.md
+
+          test -s RELEASE_NOTES.md
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
         with:
-          generate_release_notes: true
+          body_path: RELEASE_NOTES.md
           files: dist/*
