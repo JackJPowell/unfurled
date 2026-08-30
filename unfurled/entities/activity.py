@@ -6,7 +6,7 @@ import contextlib
 import logging
 from typing import TYPE_CHECKING
 
-from ..helpers.models import ActivityState
+from ..helpers.models import ActivityState, EntityPowerState
 
 if TYPE_CHECKING:
     from ..remote import Remote
@@ -175,6 +175,18 @@ class Activity:
         await self._remote._ensure_awake()
         await self._remote.api.put_entity_command(self._id, "activity.off")
         self._state = ActivityState.OFF
+
+    async def set_state(self, state: EntityPowerState | str) -> dict:
+        """Correct this activity's runtime state without running a sequence.
+
+        The correction is not persisted and may be replaced by a later driver
+        state report. The remote rejects it while the activity is running or
+        unavailable; the resulting :class:`~unfurled.HTTPError` is propagated.
+        """
+        await self._remote._ensure_awake()
+        data = await self._remote.api.put_entity_state(self._id, state)
+        self._state = data.get("attributes", {}).get("state", str(state))
+        return data
 
     async def edit(self, **options: object) -> None:
         """Patch activity options.  Currently supports ``prevent_sleep``."""

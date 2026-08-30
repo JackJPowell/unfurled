@@ -19,7 +19,7 @@ from urllib.parse import quote, urljoin, urlsplit
 import aiohttp
 
 from .helpers.exceptions import AuthenticationError, ConnectionError, HTTPError
-from .helpers.models import IRFormat, RemoteKind
+from .helpers.models import EntityPowerState, IRFormat, RemoteKind
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -503,6 +503,17 @@ class CoreAPI:
         if params:
             body["params"] = params
         return await self._put(f"entities/{self._path_segment(entity_id)}/command", json=body)
+
+    async def put_entity_state(self, entity_id: str, state: EntityPowerState | str) -> dict:
+        """PUT /entities/{entity_id}/state - correct an entity's runtime power state."""
+        try:
+            power_state = EntityPowerState(state)
+        except ValueError as exc:
+            raise ValueError("state must be 'ON' or 'OFF'") from exc
+        return await self._put(
+            f"entities/{self._path_segment(entity_id)}/state",
+            json={"state": power_state.value},
+        )
 
     async def get_entity(self, entity_id: str) -> dict:
         """GET /entities/{id}"""

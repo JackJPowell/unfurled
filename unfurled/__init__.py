@@ -43,6 +43,7 @@ from .helpers.models import (
     ButtonSettings,
     DeviceInfo,
     DisplaySettings,
+    EntityPowerState,
     Feature,
     HapticSettings,
     IRFormat,
@@ -131,6 +132,7 @@ __all__ = [
     "DiscoveredDevice",
     # Models
     "ActivityState",
+    "EntityPowerState",
     "MediaPlayerState",
     "PowerMode",
     "IRFormat",

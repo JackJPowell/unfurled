@@ -24,6 +24,13 @@ class ActivityState(StrEnum):
     UNAVAILABLE = "UNAVAILABLE"
 
 
+class EntityPowerState(StrEnum):
+    """Runtime power states accepted by ``PUT /entities/{id}/state``."""
+
+    ON = "ON"
+    OFF = "OFF"
+
+
 class MediaPlayerState(StrEnum):
     """Playback and availability states for a media player entity."""
 
