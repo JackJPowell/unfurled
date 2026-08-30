@@ -19,7 +19,7 @@ from urllib.parse import quote, urljoin, urlsplit
 import aiohttp
 
 from .helpers.exceptions import AuthenticationError, ConnectionError, HTTPError
-from .helpers.models import IRFormat
+from .helpers.models import IRFormat, RemoteKind
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -621,19 +621,22 @@ class CoreAPI:
         self,
         limit: int = 100,
         *,
-        kind: str | None = None,
+        q: str | None = None,
+        kind: RemoteKind | str | None = None,
         page: int | None = None,
     ) -> list[dict]:
-        """GET /remotes, with optional kind filtering and pagination."""
+        """GET /remotes, optionally filtering by search string and kind."""
         params: dict[str, str | int] = {"limit": limit}
+        if q is not None:
+            params["q"] = q
         if kind is not None:
             params["kind"] = kind
         if page is not None:
             params["page"] = page
         return await self._get("remotes", params=params)
 
-    async def get_remote_ir_codesets(self, remote_id: str) -> list[dict]:
-        """GET /remotes/{id}/ir"""
+    async def get_ir_remote(self, remote_id: str) -> dict:
+        """GET /remotes/{entity_id}/ir - retrieve one IR remote's codeset."""
         return await self._get(f"remotes/{self._path_segment(remote_id)}/ir")
 
     # ------------------------------------------------------------------

@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from ..helpers.exceptions import InvalidIRFormat, NoEmitterFound
-from ..helpers.models import IRFormat
+from ..helpers.models import IRFormat, RemoteKind
 from ..submodules.base import RemoteModule
 
 if TYPE_CHECKING:
@@ -203,7 +203,7 @@ class IR(RemoteModule):
     Example::
 
         await remote.ir.send("0000 006C ...")
-        await remote.ir.send("VOLUME_UP", device="Samsung TV")
+        await remote.ir.send("VOLUME_UP", remote_name="Sony")
     """
 
     @property
@@ -245,7 +245,8 @@ class IR(RemoteModule):
         self,
         command: str,
         *,
-        device: str | None = None,
+        remote_name: str | None = None,
+        manufacturer: str | None = None,
         codeset: str | None = None,
         emitter_name: str | None = None,
         emitter_id: str | None = None,
@@ -253,7 +254,13 @@ class IR(RemoteModule):
         repeat: int = 0,
         dock: Dock | None = None,
     ) -> bool:
-        """Resolve and send raw, custom, or loaded-codeset IR commands."""
+        """Resolve and send raw, custom, remote, or manufacturer IR commands.
+
+        Supply ``remote_name`` for an IR remote configured on the Remote. An
+        optional ``codeset`` verifies the returned remote codeset. Supply
+        ``manufacturer`` and ``codeset`` for a manufacturer codeset. A
+        ``codeset`` on its own resolves a custom loaded codeset.
+        """
         raw_command = self._parse_raw_command(command)
         if raw_command is not None:
             return await self._send_raw(
@@ -265,9 +272,26 @@ class IR(RemoteModule):
                 dock=dock,
             )
 
-        if device and codeset:
+        if remote_name and manufacturer:
+            raise ValueError("Specify either remote_name or manufacturer, not both")
+
+        if remote_name:
+            remote_code = await self._get_remote_code(remote_name, codeset, command)
+            return await self._send_raw(
+                remote_code.value,
+                remote_code.format,
+                emitter_name=emitter_name,
+                emitter_id=emitter_id,
+                port_id=port_id,
+                repeat=repeat,
+                dock=dock,
+            )
+
+        if manufacturer:
+            if not codeset:
+                raise InvalidIRFormat("A manufacturer codeset is required when using manufacturer")
             return await self._send_from_manufacturer(
-                device,
+                manufacturer,
                 codeset,
                 command,
                 emitter_name=emitter_name,
@@ -276,8 +300,8 @@ class IR(RemoteModule):
                 repeat=repeat,
             )
 
-        if device:
-            custom_code = await self.get_custom_code(device, command)
+        if codeset:
+            custom_code = await self.get_remote_codeset(codeset, command)
             if custom_code is not None:
                 return await self._send_raw(
                     custom_code.value,
@@ -289,11 +313,12 @@ class IR(RemoteModule):
                     dock=dock,
                 )
 
-        codeset_name = codeset or device
-        if not codeset_name:
-            raise InvalidIRFormat("IR command must be raw or include a custom device or codeset")
+        if not codeset:
+            raise InvalidIRFormat(
+                "IR command must be raw or include a remote, manufacturer, or custom codeset"
+            )
         return await self._send_from_codeset(
-            codeset_name,
+            codeset,
             command,
             emitter_name=emitter_name,
             emitter_id=emitter_id,
@@ -450,14 +475,54 @@ class IR(RemoteModule):
             ir_codeset.id, command, port_id=port_id, repeat=repeat
         )
 
-    async def get_custom_code(self, device: str, command: str) -> IRCode | None:
-        """Resolve a command from a user-defined custom IR device."""
+    async def _get_remote_code(
+        self, remote_name: str, codeset: str | None, command: str
+    ) -> IRCode:
+        """Resolve a command from the codeset assigned to an IR remote."""
+        remotes = await self._remote.api.get_remotes(q=remote_name, kind=RemoteKind.IR)
+        if not remotes:
+            raise InvalidIRFormat(f"IR remote {remote_name!r} was not found")
+        if len(remotes) > 1:
+            raise InvalidIRFormat(
+                f"IR remote search for {remote_name!r} returned multiple matches; "
+                "specify a more precise name"
+            )
+
+        entity_id = remotes[0].get("entity_id", "")
+        if not entity_id:
+            raise InvalidIRFormat(f"IR remote {remote_name!r} has no entity ID")
+        detail = await self._remote.api.get_ir_remote(entity_id)
+        if codeset and (
+            detail.get("id") != codeset
+            and detail.get("name", "").casefold() != codeset.casefold()
+        ):
+            raise InvalidIRFormat(
+                f"IR codeset {codeset!r} was not found for remote {remote_name!r}"
+            )
+
+        code = next(
+            (
+                item
+                for item in detail.get("codes", [])
+                if item.get("cmd_id", item.get("key", "")).casefold() == command.casefold()
+            ),
+            None,
+        )
+        if code is None:
+            codeset_name = detail.get("name", "") or codeset or "the remote codeset"
+            raise InvalidIRFormat(
+                f"IR command {command!r} was not found in remote codeset {codeset_name!r}"
+            )
+        return IRCode.from_dict(code)
+
+    async def get_remote_codeset(self, codeset: str, command: str) -> IRCode | None:
+        """Resolve a command from a user-defined custom IR codeset."""
         custom_devices = await self._remote.api.get_ir_custom_codes()
         custom_device = next(
             (
                 item
                 for item in custom_devices
-                if item.get("device", "").casefold() == device.casefold()
+                if item.get("device", "").casefold() == codeset.casefold()
             ),
             None,
         )
@@ -475,7 +540,7 @@ class IR(RemoteModule):
         )
         if code is None:
             raise InvalidIRFormat(
-                f"IR command '{command}' was not found for custom device '{device}'"
+                f"IR command {command!r} was not found for custom codeset {codeset!r}"
             )
         return IRCode.from_dict(code)
 

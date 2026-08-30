@@ -641,16 +641,18 @@ class Remote:
             self.ir_emitters.append(IREmitter(item, self))
 
     async def _fetch_ir_codesets(self) -> None:
-        """Fetch codesets for all registered IR remotes."""
+        """Fetch the custom IR codesets loaded on this Remote."""
         self.ir_codesets = []
         try:
-            remotes = await self.api.get_remotes()
-            for remote in remotes:
-                try:
-                    raw = await self.api.get_remote_ir_codesets(remote.get("entity_id", ""))
-                    self.ir_codesets.extend(IRCodeset.from_dict(c) for c in raw)
-                except Exception:
-                    pass
+            raw = await self.api.get_ir_custom_codes()
+            self.ir_codesets.extend(
+                IRCodeset(
+                    id=item.get("device_id", ""),
+                    name=item.get("device", ""),
+                    type="custom",
+                )
+                for item in raw
+            )
         except Exception:
             pass
 

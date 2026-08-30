@@ -91,6 +91,14 @@ class IRFormat(StrEnum):
     PRONTO = "PRONTO"
 
 
+class RemoteKind(StrEnum):
+    """Kinds supported by the ``GET /remotes`` filter."""
+
+    IR = "IR"
+    BT = "BT"
+    EXTERNAL = "EXTERNAL"
+
+
 # ---------------------------------------------------------------------------
 # Settings dataclasses (mirrors GET /cfg response)
 # ---------------------------------------------------------------------------
