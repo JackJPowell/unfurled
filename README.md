@@ -160,7 +160,7 @@ await remote.ir.send(
 )
 
 # Send a command from a remote's assigned codeset
-await remote.ir.send("VOLUME_UP", remote_name="Sony", codeset="A95L")
+await remote.ir.send("VOLUME_UP", remote_name="Sony")
 
 # Or resolve a manufacturer codeset
 await remote.ir.send("VOLUME_UP", manufacturer="Samsung", codeset="Generic TV 1")
