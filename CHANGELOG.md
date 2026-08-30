@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented in this file.
 
+## [Unreleased]
+
+### Added
+
+- Added `EntityPowerState`, `CoreAPI.put_entity_state`, and `Activity.set_state`
+  for correcting an activity's runtime `ON` or `OFF` state without running an
+  activity sequence.
+- Added `remote.system.flags.entity_state_update_available`, which reports
+  support for runtime entity-state correction on API version 2.10.1 or newer.
+
 ## [0.5.0]
 
 ### Added
