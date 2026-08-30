@@ -482,6 +482,13 @@ class Remote:
 
     def _apply_firmware_capabilities(self) -> None:
         """Apply model-and-firmware capability gates absent from older APIs."""
+        try:
+            self.system.flags.entity_state_update_available = (
+                Version(self.device.sw_version) >= Version("2.10.1")
+            )
+        except (InvalidVersion, TypeError):
+            self.system.flags.entity_state_update_available = False
+
         if self.device.model_number.upper() != "UCR3":
             return
         try:
