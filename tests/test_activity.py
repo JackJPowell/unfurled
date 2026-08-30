@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+from unittest.mock import AsyncMock
+
 import pytest
 from aioresponses import aioresponses
 
 from unfurled import Remote
 from unfurled.entities.activity import Activity, ActivityGroup
-from unfurled.helpers.models import ActivityState
+from unfurled.helpers.exceptions import HTTPError
+from unfurled.helpers.models import ActivityState, EntityPowerState
 
 BASE_URL = "http://192.168.1.10/api/"
 API_KEY = "test-key"
@@ -99,6 +102,31 @@ class TestActivityTurnOn:
                 payload={"status": "ok"},
             )
             await on_activity.turn_off()
+
+    async def test_set_state_corrects_activity_without_running_a_sequence(
+        self, on_activity: Activity, remote: Remote
+    ):
+        remote._ensure_awake = AsyncMock()
+        remote.api.put_entity_state = AsyncMock(
+            return_value={"entity_id": "act-001", "attributes": {"state": "OFF"}}
+        )
+
+        result = await on_activity.set_state(EntityPowerState.OFF)
+
+        assert result["attributes"]["state"] == "OFF"
+        assert on_activity.state == ActivityState.OFF
+        remote.api.put_entity_state.assert_awaited_once_with("act-001", EntityPowerState.OFF)
+
+    async def test_set_state_propagates_a_running_activity_conflict(
+        self, on_activity: Activity, remote: Remote
+    ):
+        remote._ensure_awake = AsyncMock()
+        remote.api.put_entity_state = AsyncMock(side_effect=HTTPError(409, "activity is running"))
+
+        with pytest.raises(HTTPError, match="HTTP 409"):
+            await on_activity.set_state(EntityPowerState.OFF)
+
+        assert on_activity.state == ActivityState.ON
 
 
 class TestActivityMediaPlayers:

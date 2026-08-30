@@ -12,7 +12,7 @@ from aioresponses import aioresponses
 
 from unfurled.api import CoreAPI
 from unfurled.helpers.exceptions import AuthenticationError, HTTPError
-from unfurled.helpers.models import RemoteKind
+from unfurled.helpers.models import EntityPowerState, RemoteKind
 
 BASE = "http://192.168.1.10/api/"
 API_KEY = "test-key"
@@ -176,6 +176,19 @@ class TestEndpoints:
         with aioresponses() as m:
             m.put(f"{BASE}entities/media_player.tv/command", payload={"status": "ok"})
             await api.put_entity_command("media_player.tv", "media_player.volume", {"volume": 50})
+
+    async def test_put_entity_state_corrects_runtime_power_state(self, api: CoreAPI):
+        payload = {"entity_id": "act-001", "attributes": {"state": "ON"}}
+        with aioresponses() as m:
+            m.put(f"{BASE}entities/act-001/state", payload=payload)
+            result = await api.put_entity_state("act-001", EntityPowerState.ON)
+
+        assert result == payload
+
+    @pytest.mark.parametrize("state", ["RUNNING", "on", "INVALID"])
+    async def test_put_entity_state_rejects_non_power_state(self, api: CoreAPI, state: str):
+        with pytest.raises(ValueError, match="state must be 'ON' or 'OFF'"):
+            await api.put_entity_state("act-001", state)
 
     async def test_get_macros_supports_search_and_pagination(self, api: CoreAPI):
         payload = [{"entity_id": "uc.main.macro-1", "name": {"en_US": "Movie Time"}}]
