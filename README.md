@@ -131,7 +131,8 @@ await act.turn_on()
 await act.turn_off()
 
 # Correct a drifted runtime state without running an activity sequence
-await act.set_state("ON")
+if remote.system.flags.entity_state_update_available:
+    await act.set_state("ON")
 
 # All off
 await remote.turn_off_all_activities()
