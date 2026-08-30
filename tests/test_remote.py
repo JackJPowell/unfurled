@@ -255,6 +255,19 @@ class TestUpdateAndCapabilities:
 
         assert remote.settings.network.wifi.wake_on_wlan_available is True
 
+    @pytest.mark.parametrize(
+        ("version", "expected"),
+        [("2.10.0", False), ("2.10.1", True), ("2.11.0", True), ("invalid", False)],
+    )
+    def test_entity_state_update_availability_is_gated_by_firmware(
+        self, remote: Remote, version: str, expected: bool
+    ):
+        remote.device.sw_version = version
+
+        remote._apply_firmware_capabilities()
+
+        assert remote.system.flags.entity_state_update_available is expected
+
 
 class TestIREmitter:
     def test_ports_are_preserved(self, remote: Remote):
