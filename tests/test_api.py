@@ -464,7 +464,7 @@ class TestEndpoints:
         app.router.add_get("/api/remotes", remotes)
         app.router.add_get("/api/ir/codes/custom", custom_codes)
         async with core_test_server(app) as base, CoreAPI(base) as local_api:
-            await local_api.get_ir_remote(limit=25, q="Sony", kind=RemoteKind.IR, page=2)
+            await local_api.get_remotes(limit=25, q="Sony", kind=RemoteKind.IR, page=2)
             await local_api.get_ir_custom_codes(limit=25, page=3)
 
         assert received == {
@@ -472,7 +472,7 @@ class TestEndpoints:
             "codes": {"limit": "25", "page": "3"},
         }
 
-    async def test_get_remote_ir_codesets_returns_codeset_for_entity_id(self, api: CoreAPI):
+    async def test_get_ir_remote_returns_codeset_for_entity_id(self, api: CoreAPI):
         entity_id = "uc.main.41b87991-8e88-49f6-9eac-41dd55d663b9"
         expected = {
             "id": "ffb76548-d6e5-45ad-ba5d-ae538950a92c",
@@ -485,7 +485,7 @@ class TestEndpoints:
         }
         with aioresponses() as m:
             m.get(f"{BASE}remotes/{entity_id}/ir", payload=expected)
-            result = await api.get_remote_ir_codesets(entity_id)
+            result = await api.get_ir_remote(entity_id)
 
         assert result == expected
 

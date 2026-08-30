@@ -322,10 +322,10 @@ class TestManufacturerIR:
         emitter = IREmitter({"device_id": "emitter-001", "name": "Remote"}, remote)
         emitter.send_code = AsyncMock(return_value=True)
         remote.ir_emitters.append(emitter)
-        remote.api.get_ir_remote = AsyncMock(
+        remote.api.get_remotes = AsyncMock(
             return_value=[{"entity_id": "uc.main.sony", "name": {"en_US": "Sony"}}]
         )
-        remote.api.get_remote_ir_codesets = AsyncMock(
+        remote.api.get_ir_remote = AsyncMock(
             return_value={
                 "id": "sony-a95l",
                 "name": "A95L",
@@ -338,13 +338,27 @@ class TestManufacturerIR:
             }
         )
 
-        assert await remote.ir.send("ch_up", remote_name="Sony", codeset="A95L")
+        assert await remote.ir.send("ch_up", remote_name="Sony")
 
-        remote.api.get_ir_remote.assert_awaited_once_with(q="Sony", kind=RemoteKind.IR)
-        remote.api.get_remote_ir_codesets.assert_awaited_once_with("uc.main.sony")
+        remote.api.get_remotes.assert_awaited_once_with(q="Sony", kind=RemoteKind.IR)
+        remote.api.get_ir_remote.assert_awaited_once_with("uc.main.sony")
         emitter.send_code.assert_awaited_once_with(
             "4;0x74B47;20;0", "HEX", port_id=None, repeat=0
         )
+
+    async def test_rejects_an_ambiguous_remote_name(self, remote: Remote):
+        remote.api.get_remotes = AsyncMock(
+            return_value=[
+                {"entity_id": "uc.main.sony-living"},
+                {"entity_id": "uc.main.sony-bedroom"},
+            ]
+        )
+        remote.api.get_ir_remote = AsyncMock()
+
+        with pytest.raises(InvalidIRFormat, match="multiple matches"):
+            await remote.ir.send("ch_up", remote_name="Sony")
+
+        remote.api.get_ir_remote.assert_not_awaited()
 
     async def test_resolves_custom_codes_by_codeset_name(self, remote: Remote):
         remote.api.get_ir_custom_codes = AsyncMock(
