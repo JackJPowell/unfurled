@@ -154,14 +154,16 @@ await remote.settings.update_sound(volume=60)
 ```python
 # Send a raw HEX or PRONTO code
 await remote.ir.send(
-    code="0000 006C ...",
-    format="PRONTO",
+    "0000 006C ...",
     emitter_name="Dock IR",  # or emitter_id="device-id"
     repeat=1,
 )
 
-# Send from a loaded codeset
-await remote.ir.send_from_codeset("Samsung TV", "VOLUME_UP")
+# Send a command from a remote's assigned codeset
+await remote.ir.send("VOLUME_UP", remote_name="Sony", codeset="A95L")
+
+# Or resolve a manufacturer codeset
+await remote.ir.send("VOLUME_UP", manufacturer="Samsung", codeset="Generic TV 1")
 
 # List available emitters
 for e in remote.ir.emitters:
