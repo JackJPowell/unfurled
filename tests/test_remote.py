@@ -11,7 +11,7 @@ from aioresponses import aioresponses
 from unfurled import IRFormat, Remote
 from unfurled.entities.ir import IREmitter
 from unfurled.helpers.exceptions import InvalidIRFormat, RemoteIsSleeping, SystemCommandNotFound
-from unfurled.helpers.models import UpdateType
+from unfurled.helpers.models import RemoteKind, UpdateType
 
 from .conftest import (
     API_KEY,
@@ -69,6 +69,7 @@ def setup_default_api_mocks(m: aioresponses, base: str = BASE_URL) -> None:
         },
     )
     m.get(f"{base}ir/emitters?limit=100", payload=make_ir_emitters())
+    m.get(f"{base}ir/codes/custom", payload=[])
     m.get(f"{base}activities?limit=100", payload=make_activities())
     m.get(f"{base}activities/act-001", payload=make_activity_detail("act-001"))
     m.get(f"{base}activities/act-002", payload=make_activity_detail("act-002"))
@@ -298,7 +299,6 @@ class TestManufacturerIR:
         emitter = IREmitter({"device_id": "emitter-001", "name": "Remote"}, remote)
         emitter.send_codeset_command = AsyncMock(return_value=True)
         remote.ir_emitters.append(emitter)
-        remote.api.get_ir_custom_codes = AsyncMock(return_value=[])
         remote.api.get_ir_manufacturers = AsyncMock(return_value=[{"id": "lg", "name": "LG"}])
         remote.api.get_ir_manufacturer_codesets = AsyncMock(
             return_value=[{"id": "hfwgPmT", "name": "Generic TV 1", "custom": False}]
@@ -307,7 +307,9 @@ class TestManufacturerIR:
             return_value=["POWER_ON", "POWER_OFF"]
         )
 
-        assert await remote.ir.send("power_off", device="lG", codeset="generic tv 1")
+        assert await remote.ir.send(
+            "power_off", manufacturer="lG", codeset="generic tv 1"
+        )
 
         remote.api.get_ir_manufacturers.assert_awaited_once_with(q="lG")
         remote.api.get_ir_manufacturer_codesets.assert_awaited_once_with("lg", q="generic tv 1")
@@ -315,6 +317,67 @@ class TestManufacturerIR:
         emitter.send_codeset_command.assert_awaited_once_with(
             "hfwgPmT", "POWER_OFF", port_id=None, repeat=0
         )
+
+    async def test_resolves_remote_codeset_command_before_sending(self, remote: Remote):
+        emitter = IREmitter({"device_id": "emitter-001", "name": "Remote"}, remote)
+        emitter.send_code = AsyncMock(return_value=True)
+        remote.ir_emitters.append(emitter)
+        remote.api.get_ir_remote = AsyncMock(
+            return_value=[{"entity_id": "uc.main.sony", "name": {"en_US": "Sony"}}]
+        )
+        remote.api.get_remote_ir_codesets = AsyncMock(
+            return_value={
+                "id": "sony-a95l",
+                "name": "A95L",
+                "codes": [
+                    {
+                        "cmd_id": "CH_UP",
+                        "code": {"value": "4;0x74B47;20;0", "format": "HEX"},
+                    }
+                ],
+            }
+        )
+
+        assert await remote.ir.send("ch_up", remote_name="Sony", codeset="A95L")
+
+        remote.api.get_ir_remote.assert_awaited_once_with(q="Sony", kind=RemoteKind.IR)
+        remote.api.get_remote_ir_codesets.assert_awaited_once_with("uc.main.sony")
+        emitter.send_code.assert_awaited_once_with(
+            "4;0x74B47;20;0", "HEX", port_id=None, repeat=0
+        )
+
+    async def test_resolves_custom_codes_by_codeset_name(self, remote: Remote):
+        remote.api.get_ir_custom_codes = AsyncMock(
+            return_value=[{"device_id": "sony-a95l", "device": "A95L"}]
+        )
+        remote.api.get_ir_custom_codeset = AsyncMock(
+            return_value={
+                "codes": [
+                    {
+                        "key": "CH_UP",
+                        "code": {"value": "4;0x74B47;20;0", "format": "HEX"},
+                    }
+                ]
+            }
+        )
+
+        code = await remote.ir.get_remote_codeset("A95L", "ch_up")
+
+        assert code is not None
+        assert (code.cmd_id, code.value, code.format) == ("CH_UP", "4;0x74B47;20;0", "HEX")
+        remote.api.get_ir_custom_codeset.assert_awaited_once_with("sony-a95l")
+
+    async def test_fetch_ir_codesets_uses_custom_codesets(self, remote: Remote):
+        remote.api.get_ir_custom_codes = AsyncMock(
+            return_value=[{"device_id": "sony-a95l", "device": "A95L"}]
+        )
+
+        await remote._fetch_ir_codesets()
+
+        remote.api.get_ir_custom_codes.assert_awaited_once_with()
+        assert [(codeset.id, codeset.name, codeset.type) for codeset in remote.ir_codesets] == [
+            ("sony-a95l", "A95L", "custom")
+        ]
 
 
 class TestWsMessageHandling:

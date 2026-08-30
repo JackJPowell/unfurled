@@ -12,6 +12,7 @@ from aioresponses import aioresponses
 
 from unfurled.api import CoreAPI
 from unfurled.helpers.exceptions import AuthenticationError, HTTPError
+from unfurled.helpers.models import RemoteKind
 
 BASE = "http://192.168.1.10/api/"
 API_KEY = "test-key"
@@ -463,13 +464,30 @@ class TestEndpoints:
         app.router.add_get("/api/remotes", remotes)
         app.router.add_get("/api/ir/codes/custom", custom_codes)
         async with core_test_server(app) as base, CoreAPI(base) as local_api:
-            await local_api.get_remotes(limit=25, kind="IR", page=2)
+            await local_api.get_ir_remote(limit=25, q="Sony", kind=RemoteKind.IR, page=2)
             await local_api.get_ir_custom_codes(limit=25, page=3)
 
         assert received == {
-            "remotes": {"limit": "25", "kind": "IR", "page": "2"},
+            "remotes": {"limit": "25", "q": "Sony", "kind": "IR", "page": "2"},
             "codes": {"limit": "25", "page": "3"},
         }
+
+    async def test_get_remote_ir_codesets_returns_codeset_for_entity_id(self, api: CoreAPI):
+        entity_id = "uc.main.41b87991-8e88-49f6-9eac-41dd55d663b9"
+        expected = {
+            "id": "ffb76548-d6e5-45ad-ba5d-ae538950a92c",
+            "manufacturer": "Custom - learned IR codes",
+            "name": "A95L",
+            "type": "custom",
+            "codes": [
+                {"cmd_id": "CH_UP", "code": {"value": "4;0x74B47;20;0", "format": "HEX"}}
+            ],
+        }
+        with aioresponses() as m:
+            m.get(f"{BASE}remotes/{entity_id}/ir", payload=expected)
+            result = await api.get_remote_ir_codesets(entity_id)
+
+        assert result == expected
 
 
 # ---------------------------------------------------------------------------
