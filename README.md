@@ -130,6 +130,9 @@ act = remote.find_activity("activity-id")
 await act.turn_on()
 await act.turn_off()
 
+# Correct a drifted runtime state without running an activity sequence
+await act.set_state("ON")
+
 # All off
 await remote.turn_off_all_activities()
 ```
