@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.6.1]
+
+### Added
+
+- Added WebSocket handling for `battery_charger` messages so wireless charger
+  connect and disconnect changes update Remote state and notify state-change
+  subscribers.
+
 ## [Unreleased]
 
 ### Added

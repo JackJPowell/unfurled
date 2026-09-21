@@ -1038,7 +1038,7 @@ wheels = [
 
 [[package]]
 name = "unfurled"
-version = "0.4.1"
+version = "0.6.1"
 source = { editable = "." }
 dependencies = [
     { name = "aiohttp" },
