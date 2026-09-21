@@ -417,6 +417,30 @@ class TestWsMessageHandling:
         assert remote.state.is_charging is True
         assert remote.last_update_type == UpdateType.BATTERY
 
+    async def test_battery_charger_message_updates_state(self, remote: Remote):
+        remote.state.is_charging = False
+        await remote._handle_ws_message(
+            json.dumps(
+                {
+                    "kind": "resp",
+                    "req_id": 2,
+                    "msg": "battery_charger",
+                    "code": 200,
+                    "msg_data": {
+                        "features": ["DOCK_CHARGING", "WIRELESS_CHARGING"],
+                        "power_supply": True,
+                        "wireless_charging": True,
+                        "wireless_charging_enabled": False,
+                    },
+                }
+            )
+        )
+        assert remote.system.flags.charging_options == ["DOCK_CHARGING", "WIRELESS_CHARGING"]
+        assert remote.state.is_charging is False
+        assert remote.state.is_wireless_charging is True
+        assert remote.system.flags.wireless_charging_enabled is False
+        assert remote.last_update_type == UpdateType.CHARGER
+
     async def test_ambient_light_updates_state(self, remote: Remote):
         await remote._handle_ws_message(ws_ambient_light_message(intensity=300))
         assert remote.state.ambient_light_level == 300

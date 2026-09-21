@@ -8,6 +8,7 @@ from unfurled.helpers.models import (
     ActivityEntityLinkEvent,
     ActivityStateEvent,
     AmbientLightEvent,
+    BatteryChargerEvent,
     BatteryEvent,
     ConfigurationChangeEvent,
     IRLearningEvent,
@@ -42,6 +43,36 @@ class TestBatteryMessage:
         event = parse_ws_message(raw)
         assert isinstance(event, BatteryEvent)
         assert event.power_supply is True
+
+
+class TestBatteryChargerMessage:
+    def test_parses_wireless_charger(self):
+        raw = json.dumps(
+            {
+                "kind": "resp",
+                "req_id": 2,
+                "msg": "battery_charger",
+                "code": 200,
+                "msg_data": {
+                    "features": ["DOCK_CHARGING", "WIRELESS_CHARGING"],
+                    "power_supply": True,
+                    "wireless_charging": True,
+                    "wireless_charging_enabled": True,
+                },
+            }
+        )
+        event = parse_ws_message(raw)
+        assert isinstance(event, BatteryChargerEvent)
+        assert event.features == ["DOCK_CHARGING", "WIRELESS_CHARGING"]
+        assert event.power_supply is True
+        assert event.wireless_charging is True
+        assert event.wireless_charging_enabled is True
+
+    def test_ignores_error_response(self):
+        raw = json.dumps(
+            {"kind": "resp", "req_id": 2, "msg": "battery_charger", "code": 400}
+        )
+        assert parse_ws_message(raw) is None
 
 
 class TestAmbientLightMessage:
