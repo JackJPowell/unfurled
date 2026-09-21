@@ -9,6 +9,7 @@ from packaging.version import InvalidVersion, Version
 
 from ..helpers.exceptions import HTTPError, SystemCommandNotFound
 from ..helpers.models import (
+    BatteryChargerEvent,
     RemoteCommand,
     RemoteFeatureFlags,
     RemoteStats,
@@ -113,14 +114,32 @@ class System(RemoteModule):
         )
 
     async def _fetch_charger(self) -> None:
-        data = await self._api.get_charger()
+        self._apply_charger_state(await self._api.get_charger())
+
+    def _apply_charger_state(self, data: dict) -> None:
+        """Map an HTTP or WebSocket charger payload onto Remote state."""
         self.flags.charging_options = data.get("features", [])
+        # ``battery_status`` is the authoritative source for ``is_charging``.
+        # Charger messages include ``power_supply`` too, but using both would
+        # make the value depend on message arrival order.
         self._remote.state.is_wireless_charging = bool(data.get("wireless_charging", False))
         self.flags.wireless_charging_enabled = bool(data.get("wireless_charging_enabled", False))
 
     # ------------------------------------------------------------------
     # WS event handler
     # ------------------------------------------------------------------
+
+    def _on_battery_charger(self, event: BatteryChargerEvent) -> None:
+        """Apply a ``battery_charger`` WebSocket response."""
+        self._apply_charger_state(
+            {
+                "features": event.features,
+                "power_supply": event.power_supply,
+                "wireless_charging": event.wireless_charging,
+                "wireless_charging_enabled": event.wireless_charging_enabled,
+            }
+        )
+        self._remote._last_update_type = UpdateType.CHARGER
 
     def _on_software_update(self, event: SoftwareUpdateEvent) -> None:
         event_type = event.event_type

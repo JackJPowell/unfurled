@@ -58,6 +58,7 @@ class UpdateType(StrEnum):
 
     ACTIVITY = "ACTIVITY"
     BATTERY = "BATTERY"
+    CHARGER = "CHARGER"
     AMBIENT_LIGHT = "AMBIENT_LIGHT"
     CONFIGURATION = "CONFIGURATION"
     MEDIA_PLAYER = "MEDIA_PLAYER"
@@ -435,6 +436,16 @@ class BatteryEvent:
 
 
 @dataclass
+class BatteryChargerEvent:
+    """Charger information returned by a WebSocket charger request."""
+
+    features: list[str]
+    power_supply: bool
+    wireless_charging: bool = False
+    wireless_charging_enabled: bool = False
+
+
+@dataclass
 class AmbientLightEvent:
     """Fired when the remote's ambient light sensor detects a change in lighting conditions."""
 
@@ -506,6 +517,7 @@ def parse_ws_message(
     raw: str,
 ) -> (
     BatteryEvent
+    | BatteryChargerEvent
     | AmbientLightEvent
     | ActivityStateEvent
     | ActivityEntityLinkEvent
@@ -538,6 +550,18 @@ def parse_ws_message(
             status=msg_data.get("status", ""),
             capacity=msg_data.get("capacity", 0),
             power_supply=bool(msg_data.get("power_supply", False)),
+        )
+
+    if msg == "battery_charger":
+        # An error response has no charger payload and must not clear the
+        # state previously obtained from a successful response.
+        if data.get("code", 200) >= 400:
+            return None
+        return BatteryChargerEvent(
+            features=list(msg_data.get("features", [])),
+            power_supply=bool(msg_data.get("power_supply", False)),
+            wireless_charging=bool(msg_data.get("wireless_charging", False)),
+            wireless_charging_enabled=bool(msg_data.get("wireless_charging_enabled", False)),
         )
 
     if msg == "ir_learning":

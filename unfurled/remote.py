@@ -32,6 +32,7 @@ from unfurled.helpers.models import (
     ActivityState,
     ActivityStateEvent,
     AmbientLightEvent,
+    BatteryChargerEvent,
     BatteryEvent,
     ConfigurationChangeEvent,
     DeviceInfo,
@@ -355,6 +356,8 @@ class Remote:
         match event:
             case BatteryEvent():
                 self._on_battery(event)
+            case BatteryChargerEvent():
+                self.system._on_battery_charger(event)
             case AmbientLightEvent():
                 self._on_ambient_light(event)
             case ActivityStateEvent():
