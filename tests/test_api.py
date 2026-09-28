@@ -492,9 +492,7 @@ class TestEndpoints:
             "manufacturer": "Custom - learned IR codes",
             "name": "A95L",
             "type": "custom",
-            "codes": [
-                {"cmd_id": "CH_UP", "code": {"value": "4;0x74B47;20;0", "format": "HEX"}}
-            ],
+            "codes": [{"cmd_id": "CH_UP", "code": {"value": "4;0x74B47;20;0", "format": "HEX"}}],
         }
         with aioresponses() as m:
             m.get(f"{BASE}remotes/{entity_id}/ir", payload=expected)

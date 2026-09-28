@@ -103,9 +103,7 @@ class Settings(RemoteModule):
 
         return default_text
 
-    def _update_localization(
-        self, localization: dict, *, defaults: bool = False
-    ) -> None:
+    def _update_localization(self, localization: dict, *, defaults: bool = False) -> None:
         """Apply Core localization data without replacing omitted values."""
         if not isinstance(localization, dict):
             return

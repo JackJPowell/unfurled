@@ -333,9 +333,7 @@ class TestManufacturerIR:
             return_value=["POWER_ON", "POWER_OFF"]
         )
 
-        assert await remote.ir.send(
-            "power_off", manufacturer="lG", codeset="generic tv 1"
-        )
+        assert await remote.ir.send("power_off", manufacturer="lG", codeset="generic tv 1")
 
         remote.api.get_ir_manufacturers.assert_awaited_once_with(q="lG")
         remote.api.get_ir_manufacturer_codesets.assert_awaited_once_with("lg", q="generic tv 1")
@@ -368,9 +366,7 @@ class TestManufacturerIR:
 
         remote.api.get_remotes.assert_awaited_once_with(q="Sony", kind=RemoteKind.IR)
         remote.api.get_ir_remote.assert_awaited_once_with("uc.main.sony")
-        emitter.send_code.assert_awaited_once_with(
-            "4;0x74B47;20;0", "HEX", port_id=None, repeat=0
-        )
+        emitter.send_code.assert_awaited_once_with("4;0x74B47;20;0", "HEX", port_id=None, repeat=0)
 
     async def test_rejects_an_ambiguous_remote_name(self, remote: Remote):
         remote.api.get_remotes = AsyncMock(

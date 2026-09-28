@@ -69,9 +69,7 @@ class TestBatteryChargerMessage:
         assert event.wireless_charging_enabled is True
 
     def test_ignores_error_response(self):
-        raw = json.dumps(
-            {"kind": "resp", "req_id": 2, "msg": "battery_charger", "code": 400}
-        )
+        raw = json.dumps({"kind": "resp", "req_id": 2, "msg": "battery_charger", "code": 400})
         assert parse_ws_message(raw) is None
 
 

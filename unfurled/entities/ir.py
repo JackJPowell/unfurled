@@ -475,9 +475,7 @@ class IR(RemoteModule):
             ir_codeset.id, command, port_id=port_id, repeat=repeat
         )
 
-    async def _get_remote_code(
-        self, remote_name: str, codeset: str | None, command: str
-    ) -> IRCode:
+    async def _get_remote_code(self, remote_name: str, codeset: str | None, command: str) -> IRCode:
         """Resolve a command from the codeset assigned to an IR remote."""
         remotes = await self._remote.api.get_remotes(q=remote_name, kind=RemoteKind.IR)
         if not remotes:
@@ -493,8 +491,7 @@ class IR(RemoteModule):
             raise InvalidIRFormat(f"IR remote {remote_name!r} has no entity ID")
         detail = await self._remote.api.get_ir_remote(entity_id)
         if codeset and (
-            detail.get("id") != codeset
-            and detail.get("name", "").casefold() != codeset.casefold()
+            detail.get("id") != codeset and detail.get("name", "").casefold() != codeset.casefold()
         ):
             raise InvalidIRFormat(
                 f"IR codeset {codeset!r} was not found for remote {remote_name!r}"

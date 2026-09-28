@@ -61,9 +61,10 @@ async def test_start_setup_parses_typed_dynamic_input_page():
     assert result.action and result.action.page
     assert result.action.page.title.text("en_US") == "Connect"
     assert result.action.page.fields[1].value is True
-    assert result.raw["require_user_action"] == remote.api.post_integration_setup.return_value[
-        "require_user_action"
-    ]
+    assert (
+        result.raw["require_user_action"]
+        == remote.api.post_integration_setup.return_value["require_user_action"]
+    )
     assert result.action.raw == result.raw["require_user_action"]
     remote.api.post_integration_setup.assert_awaited_once_with(
         {
@@ -94,9 +95,10 @@ async def test_setup_definition_parses_driver_metadata_into_a_typed_model():
     assert definition.name.text() == "Demo"
     assert definition.setup_data_schema
     assert definition.setup_data_schema.title.text() == "Initial setup"
-    assert definition.raw["setup_data_schema"] == remote.api.get_driver.return_value[
-        "setup_data_schema"
-    ]
+    assert (
+        definition.raw["setup_data_schema"]
+        == remote.api.get_driver.return_value["setup_data_schema"]
+    )
 
 
 @pytest.mark.asyncio
