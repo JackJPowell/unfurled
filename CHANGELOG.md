@@ -2,7 +2,11 @@
 
 All notable changes to this project are documented in this file.
 
-## [Unreleased]
+## [0.6.3]
+
+- Added debug logging to WOL packet transmission
+
+## [0.6.2]
 
 - Added `remote.system.flags.inplace_upgrade_available`, which reports support
   for in-place upgrades on firmware version 2.9.3 or newer.

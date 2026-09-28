@@ -198,6 +198,7 @@ class Remote:
         """Send a WoL magic packet and optionally verify the device is awake."""
         validated_url = cls._normalize_url(api_url)
         send_magic_packet(mac_address)
+        _LOGGER.debug("Sent Wake-on-LAN magic packet to %s", mac_address)
         if not wait_for_confirmation:
             return True
 
