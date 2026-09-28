@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented in this file.
 
+## [Unreleased]
+
+- Added `remote.system.flags.inplace_upgrade_available`, which reports support
+  for in-place upgrades on firmware version 2.9.3 or newer.
+
 ## [0.6.1]
 
 ### Added
@@ -9,8 +14,6 @@ All notable changes to this project are documented in this file.
 - Added WebSocket handling for `battery_charger` messages so wireless charger
   connect and disconnect changes update Remote state and notify state-change
   subscribers.
-
-## [Unreleased]
 
 ### Added
 
