@@ -350,6 +350,7 @@ class RemoteFeatureFlags:
     """Device capability flags detected during ``init()``."""
 
     entity_state_update_available: bool = False
+    inplace_upgrade_available: bool = False
     external_entity_configuration_available: bool = False
     new_web_configurator: bool = True
     charging_options: list = field(default_factory=list)
