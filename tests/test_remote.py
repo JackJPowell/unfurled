@@ -268,6 +268,19 @@ class TestUpdateAndCapabilities:
 
         assert remote.system.flags.entity_state_update_available is expected
 
+    @pytest.mark.parametrize(
+        ("version", "expected"),
+        [("2.9.2", False), ("2.9.3", True), ("2.10.0", True), ("invalid", False)],
+    )
+    def test_inplace_upgrade_availability_is_gated_by_firmware(
+        self, remote: Remote, version: str, expected: bool
+    ):
+        remote.device.sw_version = version
+
+        remote._apply_firmware_capabilities()
+
+        assert remote.system.flags.inplace_upgrade_available is expected
+
 
 class TestIREmitter:
     def test_ports_are_preserved(self, remote: Remote):
