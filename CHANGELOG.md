@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.6.4]
+
+- Added nullable `remote.system.update_info.download_state` to expose `DOWNLOAD`
+  and `FAILURE` states consistently through WebSocket events and status polling.
+- Clear previous download failures when a new download or installation starts,
+  while preserving download progress, including the final 100% event.
+
 ## [0.6.3]
 
 - Added debug logging to WOL packet transmission
