@@ -147,9 +147,11 @@ class System(RemoteModule):
 
         if event_type == "START":
             self.update_info.in_progress = True
+            self.update_info.download_state = None
 
         elif event_type == "PROGRESS":
             state = progress.get("state", "")
+            self.update_info.download_state = state if state in {"DOWNLOAD", "FAILURE"} else None
             total_steps = progress.get("total_steps", 1) or 1
             offset = round(100 / total_steps)
             pct_offset = offset / 100
@@ -224,6 +226,10 @@ class System(RemoteModule):
         """Return the latest software update status and update local progress."""
         status = await self._api.get_system_update_latest()
         progress = status.get("progress", {})
+        download_state = progress.get("state", status.get("state"))
+        self.update_info.download_state = (
+            download_state if download_state in {"DOWNLOAD", "FAILURE"} else None
+        )
         self.update_info.download_percent = int(
             progress.get("download_percent", status.get("download_percent", 0)) or 0
         )
