@@ -151,6 +151,58 @@ class TestErrorHandling:
 
 
 class TestEndpoints:
+    @pytest.mark.parametrize("force_check", [False, True])
+    async def test_system_update_metadata_preserves_available_records(
+        self, api: CoreAPI, force_check: bool
+    ):
+        payload = {
+            "installed_version": "2.7.0",
+            "available": [
+                {"id": "ota-2.8.0", "version": "2.8.0", "state": "PENDING"},
+                {"id": "ota-2.9.0-beta", "version": "2.9.0b1", "channel": "BETA"},
+            ],
+        }
+        with aioresponses() as m:
+            method = m.put if force_check else m.get
+            method(f"{BASE}system/update", payload=payload)
+            result = await (api.put_system_update() if force_check else api.get_system_update())
+
+        assert result == payload
+
+    async def test_system_update_by_id_sends_post_body(self, api: CoreAPI):
+        body = {"option": "value"}
+        with aioresponses() as m:
+            m.post(f"{BASE}system/update/selected-id", payload={"state": "PENDING"})
+            result = await api.post_system_update("selected-id", body)
+
+            request = next(iter(m.requests.values()))[0]
+            assert request.kwargs["json"] == body
+        assert result == {"state": "PENDING"}
+
+    @pytest.mark.parametrize("method", ["GET", "POST"])
+    async def test_system_update_by_id_encodes_path_segment(self, method: str):
+        update_id = "release/../2.8 beta?channel=stable#tag%&é"
+        paths = []
+
+        async def update(request: web.Request) -> web.Response:
+            paths.append(request.raw_path)
+            assert request.match_info["update_id"] == update_id
+            assert not request.query
+            return web.json_response({"state": "PENDING"})
+
+        app = web.Application()
+        app.router.add_route(method, "/api/system/update/{update_id}", update)
+        async with core_test_server(app) as base, CoreAPI(base) as local_api:
+            if method == "GET":
+                result = await local_api.get_system_update_by_id(update_id)
+            else:
+                result = await local_api.post_system_update(update_id)
+
+        assert result == {"state": "PENDING"}
+        assert paths == [
+            "/api/system/update/release%2F..%2F2.8%20beta%3Fchannel=stable%23tag%25&%C3%A9"
+        ]
+
     async def test_get_battery(self, api: CoreAPI):
         payload = {"capacity": 80, "status": "DISCHARGING", "power_supply": False}
         with aioresponses() as m:

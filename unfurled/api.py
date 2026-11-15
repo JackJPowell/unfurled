@@ -423,20 +423,28 @@ class CoreAPI:
     # ------------------------------------------------------------------
 
     async def get_system_update(self) -> dict:
-        """GET /system/update"""
+        """GET /system/update, including available update IDs and versions."""
         return await self._get("system/update")
 
     async def put_system_update(self) -> dict:
-        """PUT /system/update - force an update check."""
+        """PUT /system/update - check for updates and return IDs and versions."""
         return await self._put("system/update")
 
+    async def get_system_update_by_id(self, update_id: str) -> dict:
+        """GET /system/update/{update_id}. The server does not resolve aliases."""
+        return await self._get(f"system/update/{self._path_segment(update_id)}")
+
+    async def post_system_update(self, update_id: str, body: dict | None = None) -> dict:
+        """POST /system/update/{update_id} - download or install this firmware."""
+        return await self._post(f"system/update/{self._path_segment(update_id)}", json=body)
+
     async def get_system_update_latest(self) -> dict:
-        """GET /system/update/latest"""
-        return await self._get("system/update/latest")
+        """GET /system/update/latest. GET does not resolve the ``latest`` alias."""
+        return await self.get_system_update_by_id("latest")
 
     async def post_system_update_latest(self, body: dict | None = None) -> dict:
-        """POST /system/update/latest - install latest firmware."""
-        return await self._post("system/update/latest", json=body)
+        """POST /system/update/latest - requires a locally downloaded update."""
+        return await self.post_system_update("latest", body)
 
     # ------------------------------------------------------------------
     # Activities

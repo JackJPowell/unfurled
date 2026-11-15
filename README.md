@@ -214,11 +214,35 @@ await remote.auth.revoke_key("Home Assistant")
 
 ```python
 # Force an update check
-result = await remote.api.post_force_update_check()
+result = await remote.system.force_update_check()
+
+# GET /system/update also returns the available update metadata
+result = await remote.api.get_system_update()
+for update in remote.system.update_info.available:
+    print(update["id"], update["version"])
+
+# Select and retain the concrete ID in your integration
+update_id = "your-selected-update-id"
+await remote.system.update_firmware(update_id=update_id, download_only=True)
+status = await remote.system.get_update_status(update_id=update_id)
+await remote.system.update_firmware(update_id=update_id)
 
 # Current status
-print(remote.update_info.in_progress, remote.update_info.update_percent)
+print(remote.system.update_info.in_progress, remote.system.update_info.update_percent)
 ```
+
+GET and PUT `/system/update` return available update records with IDs and versions.
+Remote refreshes and `force_update_check()` cache those records in
+`remote.system.update_info.available`. The low-level methods
+`remote.api.get_system_update_by_id(update_id)` and
+`remote.api.post_system_update(update_id)` request that exact ID, safely encoded
+as a path segment.
+
+Calls without an ID still request `latest` for compatibility. POST with `latest`
+requires a locally downloaded update; GET does not resolve aliases. Use a concrete
+ID to download an available update. `download_only=True` checks that same ID and
+only sends POST when its state is `PENDING` or `ERROR`. HTTP errors propagate to the
+caller, without switching IDs or falling back to `latest`.
 
 ### WebSocket Events
 

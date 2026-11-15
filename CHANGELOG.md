@@ -2,6 +2,15 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.6.5]
+
+- Added support for downloading, installing, and checking firmware updates by
+  concrete update ID, with available update IDs and versions exposed to integrations.
+- Preserved existing no-ID calls and documented the limitations of `latest`.
+  HTTP errors propagate without switching update IDs or falling back to `latest`.
+- Fixed partial status responses and metadata refreshes overwriting cached
+  progress, preserving WebSocket download progress and failure state.
+
 ## [0.6.4]
 
 - Added nullable `remote.system.update_info.download_state` to expose `DOWNLOAD`

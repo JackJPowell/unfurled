@@ -77,7 +77,8 @@ class System(RemoteModule):
         if installed_version:
             self._remote.device.sw_version = installed_version
 
-        self.update_info.in_progress = bool(data.get("update_in_progress", False))
+        if "update_in_progress" in data:
+            self.update_info.in_progress = bool(data["update_in_progress"])
         self.update_info.next_check_date = data.get("next_check_date", "")
         self._remote.settings.software_update.check_for_updates = bool(
             data.get(
@@ -222,36 +223,61 @@ class System(RemoteModule):
     # Firmware update operations
     # ------------------------------------------------------------------
 
-    async def get_update_status(self) -> dict:
-        """Return the latest software update status and update local progress."""
-        status = await self._api.get_system_update_latest()
+    async def get_update_status(self, *, update_id: str | None = None) -> dict:
+        """Return status for *update_id* and apply the progress fields provided.
+
+        Omitting the ID requests ``latest`` for compatibility, but GET does not
+        resolve aliases. Use an ID from ``update_info.available`` instead.
+        HTTP errors propagate to the caller without trying another ID.
+        """
+        status = (
+            await self._api.get_system_update_latest()
+            if update_id is None
+            else await self._api.get_system_update_by_id(update_id)
+        )
         progress = status.get("progress", {})
-        download_state = progress.get("state", status.get("state"))
-        self.update_info.download_state = (
-            download_state if download_state in {"DOWNLOAD", "FAILURE"} else None
-        )
-        self.update_info.download_percent = int(
-            progress.get("download_percent", status.get("download_percent", 0)) or 0
-        )
-        self.update_info.update_percent = int(
-            progress.get("update_percent", status.get("update_percent", 0)) or 0
-        )
-        state = status.get("state", "")
-        self.update_info.in_progress = state in {"START", "INSTALLING", "UPDATING"}
+        state = status.get("state")
+        if "state" in progress or state in {
+            "DOWNLOAD",
+            "FAILURE",
+            "START",
+            "INSTALLING",
+            "UPDATING",
+        }:
+            download_state = progress.get("state", state)
+            self.update_info.download_state = (
+                download_state if download_state in {"DOWNLOAD", "FAILURE"} else None
+            )
+        for field in ("download_percent", "update_percent"):
+            if field in progress or field in status:
+                setattr(self.update_info, field, int(progress.get(field, status.get(field)) or 0))
+        if "state" in status:
+            self.update_info.in_progress = state in {"START", "INSTALLING", "UPDATING"}
         return status
 
-    async def update_firmware(self, *, download_only: bool = False) -> str:
+    async def update_firmware(
+        self, *, update_id: str | None = None, download_only: bool = False
+    ) -> str:
         """Trigger a firmware update.
 
         If *download_only* is ``True``, only downloads the update (does not
         install) — the update must be in ``PENDING`` or ``ERROR`` state first.
+        The status check and POST both use *update_id*.
+
+        Omitting the ID uses ``latest``, which requires a locally downloaded
+        update for POST; GET does not resolve aliases. Prefer a concrete ID
+        from ``update_info.available``. HTTP errors propagate without fallback.
         """
         if download_only:
-            status = await self.get_update_status()
+            status = await self.get_update_status(update_id=update_id)
             if status.get("state") not in ("PENDING", "ERROR"):
                 return status.get("state", "UNKNOWN")
 
-        data = await self._api.post_system_update_latest()
+        data = (
+            await self._api.post_system_update_latest()
+            if update_id is None
+            else await self._api.post_system_update(update_id)
+        )
         return data.get("state", "UNKNOWN") if data else "OK"
 
     async def force_update_check(self) -> dict:

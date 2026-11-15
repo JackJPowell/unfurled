@@ -409,7 +409,12 @@ class RemoteStats:
 
 @dataclass
 class UpdateInfo:
-    """Software update status from ``GET /update``."""
+    """Cached update metadata and HTTP/WebSocket progress.
+
+    ``available`` preserves the records from ``GET /system/update`` and
+    ``PUT /system/update``, including each update's ``id`` and ``version``.
+    Callers select and retain an ID for firmware operations.
+    """
 
     in_progress: bool = False
     update_percent: int = 0
