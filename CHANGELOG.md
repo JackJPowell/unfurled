@@ -2,6 +2,10 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.6.6]
+
+- Fixed number and slider widgets being ignored when scanning activities for unused entities, which caused referenced entities to be incorrectly reported as unused.
+
 ## [0.6.5]
 
 - Added support for downloading, installing, and checking firmware updates by

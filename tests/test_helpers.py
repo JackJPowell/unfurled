@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
+
 from unfurled.helpers.discovery import DiscoveredDevice
 from unfurled.helpers.exceptions import (
     ApiKeyNotFound,
@@ -247,6 +249,23 @@ class TestExtractUsedEntityIds:
         used = helpers._extract_used_entity_ids(activity)
         assert "remote.tv" in used
 
+    @pytest.mark.parametrize(
+        "item, entity_id",
+        [
+            ({"number": {"number_id": "number.bass"}}, "number.bass"),
+            ({"slider": {"entity_id": "number.bass"}}, "number.bass"),
+            (
+                {"slider": {"entity_id": "media_player.amp", "feature": "volume"}},
+                "media_player.amp",
+            ),
+        ],
+    )
+    def test_extracts_number_and_slider_entities_from_ui(self, item, entity_id):
+        helpers, _ = make_helpers()
+        activity = {"options": {"user_interface": {"pages": [{"items": [item]}]}}}
+
+        assert helpers._extract_used_entity_ids(activity) == {entity_id}
+
     def test_ignores_non_list_sequences(self):
         helpers, _ = make_helpers()
         activity = {"options": {"sequences": {"on": "not-a-list"}}}
@@ -261,6 +280,116 @@ class TestExtractUsedEntityIds:
 
 
 class TestFindUnusedActivityEntities:
+    @pytest.mark.parametrize("widget_types", [("slider",), ("number",), ("slider", "number")])
+    async def test_kitchen_tablet_number_widget_response(self, widget_types):
+        """Recognize references from the reported activity response, without sequences."""
+        helpers, mock_api = make_helpers()
+        activity_id = "uc.main.f76aeb35-e4f6-428c-8abc-cd7a9bbe3901"
+        entity_id = "hass.main.number.kitchen_tablet_volume"
+        items = [
+            {
+                "location": {"x": 0, "y": 0},
+                "size": {"height": 1, "width": 2},
+                "slider": {
+                    "color": "auto",
+                    "entity_id": entity_id,
+                    "fill": "auto",
+                    "max": 100,
+                    "min": 0,
+                    "show_name": False,
+                    "show_value": True,
+                    "style": "default",
+                    "update_mode": "on_release",
+                },
+                "type": "slider",
+            },
+            {
+                "location": {"x": 0, "y": 2},
+                "number": {
+                    "display_mode": "stepper",
+                    "number_id": entity_id,
+                    "show_name": False,
+                },
+                "size": {"height": 1, "width": 2},
+                "type": "number",
+            },
+        ]
+        mock_api.get_activities = AsyncMock(
+            return_value=[{"entity_id": activity_id, "name": {"en_US": "New"}}]
+        )
+        mock_api.get_activity = AsyncMock(
+            return_value={
+                "entity_id": activity_id,
+                "entity_type": "activity",
+                "options": {
+                    "button_mapping": [{"button": "BACK"}, {"button": "POWER"}],
+                    "included_entities": [
+                        {
+                            "entity_commands": [
+                                "number.set_value",
+                                "number.increment",
+                                "number.decrement",
+                            ],
+                            "entity_id": entity_id,
+                            "entity_type": "number",
+                            "name": {"en": "Kitchen Tablet Volume"},
+                        }
+                    ],
+                    "user_interface": {
+                        "pages": [
+                            {
+                                "grid": {"height": 6, "width": 4},
+                                "items": [item for item in items if item["type"] in widget_types],
+                                "name": "New page",
+                                "page_id": "main",
+                            }
+                        ]
+                    },
+                },
+                "attributes": {"state": "OFF"},
+                "enabled": True,
+            }
+        )
+
+        assert await helpers.find_unused_activity_entities() == []
+        mock_api.get_activity.assert_awaited_once_with(activity_id)
+
+    @pytest.mark.parametrize(
+        "item",
+        [
+            {"type": "number", "number": {"number_id": "number.bass"}},
+            {"type": "slider", "slider": {"entity_id": "number.bass"}},
+        ],
+    )
+    async def test_only_reports_number_entities_without_widget_references(self, item):
+        helpers, mock_api = make_helpers()
+        mock_api.get_activities = AsyncMock(
+            return_value=[{"entity_id": "act-001", "name": {"en": "Listen"}}]
+        )
+        mock_api.get_activity = AsyncMock(
+            return_value={
+                "entity_id": "act-001",
+                "options": {
+                    "included_entities": [
+                        {"entity_id": "number.bass", "entity_type": "number"},
+                        {"entity_id": "number.unused", "entity_type": "number"},
+                    ],
+                    "user_interface": {"pages": [{"items": [item]}]},
+                },
+            }
+        )
+
+        result = await helpers.find_unused_activity_entities()
+
+        assert result == [
+            {
+                "entity_id": "number.unused",
+                "entity_type": "number",
+                "activity_id": "act-001",
+                "activity_name": {"en": "Listen"},
+            }
+        ]
+
     async def test_returns_empty_when_all_used(self):
         helpers, mock_api = make_helpers()
         mock_api.get_activities = AsyncMock(

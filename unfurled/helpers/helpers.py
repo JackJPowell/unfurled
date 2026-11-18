@@ -158,6 +158,13 @@ class Helpers(RemoteModule):
                 select = item.get("select", {})
                 if isinstance(select, dict) and select.get("select_id"):
                     used.add(select["select_id"])
+                # number widgets reference number_id; slider widgets use entity_id
+                number = item.get("number", {})
+                if isinstance(number, dict) and number.get("number_id"):
+                    used.add(number["number_id"])
+                slider = item.get("slider", {})
+                if isinstance(slider, dict) and slider.get("entity_id"):
+                    used.add(slider["entity_id"])
 
         return used
 
@@ -169,7 +176,7 @@ class Helpers(RemoteModule):
 
         An entity is "unused" when it appears in ``included_entities`` but has no
         reference in sequences, button_mapping, or user_interface (commands, media
-        player widgets, sensor widgets, or select widgets).
+        player widgets, sensor widgets, select widgets, number widgets, or sliders).
 
         Authentication can be done via PIN (Basic Auth) or API key (Bearer token).
         One of ``pin`` or ``api_key`` must be provided.
