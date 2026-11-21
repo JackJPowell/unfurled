@@ -140,6 +140,12 @@ await remote.turn_off_all_activities()
 
 ### Activity entity cleanup
 
+`find_orphaned_entities()` and `find_unused_activity_entities()` raise
+`UnfurledError` if a request or activity processing fails, including after
+earlier activities produced matches. They never return partial results on
+failure. An empty list means the scan succeeded with no matches. The original
+exception is available as `__cause__`.
+
 Remove selected unused entities from one activity without deleting the
 configured entities from the Remote. `only_unused=True` is the default:
 

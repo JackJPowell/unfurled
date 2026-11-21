@@ -4,6 +4,9 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+- Activity orphan and unused-entity scans now raise `UnfurledError` on failure
+  instead of returning empty or partial results. The original error is chained.
+
 - Added `remote.helpers.remove_activity_entities()` with `only_unused=True` by
   default. Explicitly setting it to `False` also removes activity references.
   Unrelated settings and configured Remote entities are preserved.

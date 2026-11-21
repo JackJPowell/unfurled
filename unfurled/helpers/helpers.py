@@ -4,9 +4,8 @@ import logging
 from copy import deepcopy
 from typing import Any
 
-import aiohttp
-
 from ..submodules.base import RemoteModule
+from .exceptions import UnfurledError
 
 _LOG = logging.getLogger(__name__)
 
@@ -156,7 +155,8 @@ class Helpers(RemoteModule):
 
         :return: List of orphaned entity dictionaries (with entity_commands
         and simple_commands removed)
-        :raises ValueError: If neither pin nor api_key is provided
+        :raises UnfurledError: If any request or activity processing fails.
+            Failed scans never return empty or partial results.
 
         Example:
             orphaned = await find_orphaned_entities()
@@ -222,12 +222,8 @@ class Helpers(RemoteModule):
             _LOG.info("Found %d orphaned entities", len(orphaned_entities))
             return orphaned_entities
 
-        except aiohttp.ClientError as err:
-            _LOG.error("Network error while scanning for orphaned entities: %s", err)
-            return orphaned_entities
         except Exception as err:  # pylint: disable=broad-except
-            _LOG.error("Unexpected error while scanning for orphaned entities: %s", err)
-            return orphaned_entities
+            raise UnfurledError("Failed to scan activities for orphaned entities") from err
 
     def _extract_used_entity_ids(self, activity: dict[str, Any]) -> set[str]:
         """
@@ -290,7 +286,8 @@ class Helpers(RemoteModule):
         :param pin: Remote's web-configurator PIN for Basic Auth
         :param api_key: Remote's API key for Bearer token authentication
         :return: List of dicts with activity context and the unused entity info
-        :raises ValueError: If neither pin nor api_key is provided
+        :raises UnfurledError: If any request or activity processing fails.
+            Failed scans never return empty or partial results.
         """
         unused: list[dict[str, Any]] = []
 
@@ -331,12 +328,8 @@ class Helpers(RemoteModule):
             _LOG.info("Found %d unused activity entities", len(unused))
             return unused
 
-        except aiohttp.ClientError as err:
-            _LOG.error("Network error while scanning for unused entities: %s", err)
-            return unused
         except Exception as err:  # pylint: disable=broad-except
-            _LOG.error("Unexpected error while scanning for unused entities: %s", err)
-            return unused
+            raise UnfurledError("Failed to scan activities for unused entities") from err
 
     async def find_orphaned_ir_codesets(self) -> list[dict[str, Any]]:
         """Return custom IR codesets that are not assigned to an IR remote.

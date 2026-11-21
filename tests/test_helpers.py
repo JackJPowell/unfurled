@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock
 
+import aiohttp
 import pytest
 
 from unfurled.helpers.discovery import DiscoveredDevice
@@ -135,16 +136,6 @@ class TestFindOrphanedEntities:
 
         assert result == []
         mock_api.get_activity.assert_not_called()
-
-    async def test_returns_empty_on_network_error(self):
-        helpers, mock_api = make_helpers()
-        import aiohttp
-
-        mock_api.get_activities = AsyncMock(side_effect=aiohttp.ClientError("timeout"))
-
-        result = await helpers.find_orphaned_entities()
-
-        assert result == []
 
     async def test_includes_activity_name_in_result(self):
         helpers, mock_api = make_helpers()
@@ -447,15 +438,80 @@ class TestFindUnusedActivityEntities:
 
         assert result == []
 
-    async def test_returns_empty_on_network_error(self):
+
+# ---------------------------------------------------------------------------
+# Activity scans: failure is distinct from a successful empty result
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("scanner", ["find_orphaned_entities", "find_unused_activity_entities"])
+class TestActivityScanFailures:
+    @pytest.mark.parametrize("error_type", [aiohttp.ClientError, RuntimeError, AuthenticationError])
+    async def test_raises_before_scanning(self, scanner, error_type):
         helpers, mock_api = make_helpers()
-        import aiohttp
+        error = error_type("listing failed")
+        mock_api.get_activities = AsyncMock(side_effect=error)
+        mock_api.get_activity = AsyncMock()
 
-        mock_api.get_activities = AsyncMock(side_effect=aiohttp.ClientError("timeout"))
+        with pytest.raises(UnfurledError, match="Failed to scan activities") as raised:
+            await getattr(helpers, scanner)()
 
-        result = await helpers.find_unused_activity_entities()
+        assert raised.value.__cause__ is error
+        mock_api.get_activity.assert_not_awaited()
 
-        assert result == []
+    @pytest.mark.parametrize("error_type", [aiohttp.ClientError, RuntimeError, AuthenticationError])
+    async def test_raises_midway_instead_of_returning_partial_results(self, scanner, error_type):
+        helpers, mock_api = make_helpers()
+        error = error_type("detail request failed")
+        mock_api.get_activities = AsyncMock(
+            return_value=[
+                {"entity_id": "act-001"},
+                {"entity_id": "act-002"},
+                {"entity_id": "act-003"},
+            ]
+        )
+        first = {"options": {"included_entities": [{"entity_id": "orphan", "available": False}]}}
+        mock_api.get_activity = AsyncMock(side_effect=[first, error])
+
+        # Prove that the first activity yields a result for this scanner.
+        mock_api.get_activities.return_value = [{"entity_id": "act-001"}]
+        assert len(await getattr(helpers, scanner)()) == 1
+        mock_api.get_activities.return_value = [
+            {"entity_id": "act-001"},
+            {"entity_id": "act-002"},
+            {"entity_id": "act-003"},
+        ]
+        mock_api.get_activity.reset_mock(side_effect=True)
+        mock_api.get_activity.side_effect = [first, error]
+
+        with pytest.raises(UnfurledError, match="Failed to scan activities") as raised:
+            await getattr(helpers, scanner)()
+
+        assert raised.value.__cause__ is error
+        assert [call.args for call in mock_api.get_activity.await_args_list] == [
+            ("act-001",),
+            ("act-002",),
+        ]
+
+    async def test_wraps_processing_failure_after_collecting_a_result(self, scanner):
+        helpers, mock_api = make_helpers()
+        mock_api.get_activities = AsyncMock(
+            return_value=[
+                {"entity_id": "act-001"},
+                {"entity_id": "act-002"},
+            ]
+        )
+        mock_api.get_activity = AsyncMock(
+            side_effect=[
+                {"options": {"included_entities": [{"entity_id": "orphan", "available": False}]}},
+                {"options": []},
+            ]
+        )
+        with pytest.raises(UnfurledError) as raised:
+            await getattr(helpers, scanner)()
+
+        assert isinstance(raised.value.__cause__, AttributeError)
+        assert mock_api.get_activity.await_count == 2
 
 
 # ---------------------------------------------------------------------------
