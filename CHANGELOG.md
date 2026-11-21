@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented in this file.
 
+## [Unreleased]
+
+- Added web view entity CRUD, cloning, search, pagination and count APIs,
+  Remote UI commands, WebSocket updates, global settings and button presets
+  for Remote firmware 2.14.0 and newer.
+- Recognize web view widgets when checking activities for unused entities.
+- Added `RemoteFeatureFlags.webview_available` and documented the firmware
+  capability matrix. Added typed web view payloads for options, credentials,
+  cookies, TLS, button actions, overrides and global settings updates.
+
 ## [0.6.6]
 
 - Fixed number and slider widgets being ignored when scanning activities for unused entities, which caused referenced entities to be incorrectly reported as unused.

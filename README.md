@@ -118,6 +118,25 @@ configuration, activities, entities, docks, IR emitters, update info.
 | `activities` | `list[Activity]` |
 | `docks` | `list[Dock]` |
 
+### Firmware capability matrix
+
+Availability flags are grouped in the `RemoteFeatureFlags` dataclass at
+`remote.system.flags` and populated by `await remote.init()`.
+
+| Flag | Minimum firmware |
+|---|---|
+| `external_entity_configuration_available` | 2.0.0 (also enabled for simulators) |
+| `new_web_configurator` | 2.2.0 |
+| `inplace_upgrade_available` | 2.9.3 |
+| `entity_state_update_available` | 2.10.1 |
+| `webview_available` | 2.14.0 |
+
+These flags describe firmware support. For a web view's runtime availability,
+check `view.state`: Core can report `UNAVAILABLE` when no capable UI is connected.
+Flags do not prevent explicit API calls or trigger requests themselves.
+Network capability information remains grouped with network settings:
+`remote.settings.network.wifi.wake_on_wlan_available` (Remote 3 requires 2.7.0+).
+
 ### Activities
 
 ```python
@@ -152,6 +171,90 @@ await remote.settings.update_network(wake_on_wlan=True)
 # Change sound volume
 await remote.settings.update_sound(volume=60)
 ```
+
+### Web views
+
+Web views require Remote firmware 2.14.0 or newer. Definitions are fetched on
+demand; existing initialization works with older firmware.
+
+```python
+if remote.system.flags.webview_available:
+    view = await remote.get_webview("uc_web.main.dashboard")
+    await view.open()
+```
+
+```python
+# List overviews, filtered to USER or EXTERNAL if desired
+overviews = await remote.api.get_webviews(kind="USER", q="Dashboard")
+count = await remote.api.get_webview_count(kind="USER")
+
+# Fetch a full definition; the object receives subsequent WebSocket changes
+view = await remote.get_webview(overviews[0]["entity_id"])
+await view.open()
+await view.reload()
+
+# Create a user-defined web view (or use clone_from to copy an existing one)
+view = await remote.create_webview({
+    "name": {"en": "Dashboard"},
+    "options": {"url": "https://home.example/dashboard", "zoom": 80},
+})
+await view.update({"options": {"zoom": None}})  # restore default
+
+# Global settings; changes require admin scope
+await remote.settings.update_webview(color_scheme="dark", buttons={"BACK": None})
+presets = await remote.api.get_webview_button_presets()
+await remote.settings.update_webview(buttons=presets[0]["buttons"])
+```
+
+`view.state` indicates availability, not whether the page is open. Core routes
+commands to the Remote UI for both user and integration web views. Integration
+web views allow metadata changes and `options.user` overrides for zoom, reload
+interval, navigation and buttons. Core validates options and reports errors.
+
+Options preserve Core's secret-presence flags; passwords, tokens and cookie
+values are omitted from responses. Updates send only the supplied fields,
+including explicit `None` resets. `view.refresh()` reloads the full definition.
+`view.clear_cache()` and `view.clear_data()` affect **all web views** because they
+share website data. `view.delete()` deletes or unconfigures the entity;
+`remote.api.delete_webviews()` permanently deletes all user-defined web views.
+
+Typed payloads provide autocomplete and static checking while remaining ordinary
+dictionaries. Core still performs validation. Omit a key to keep its stored value;
+use `None` to reset an option that supports resetting.
+
+```python
+from unfurled import WebViewCreate, WebViewUpdate
+
+definition: WebViewCreate = {
+    "name": {"en": "Dashboard"},
+    "options": {
+        "url": "https://home.example/dashboard",
+        "auth": {"type": "bearer", "token": "my-token"},
+        "buttons": {"BACK": {"action": "function", "function": "back_or_close"}},
+    },
+}
+view = await remote.create_webview(definition)
+patch: WebViewUpdate = {"options": {"zoom": None, "buttons": {"BACK": None}}}
+await view.update(patch)
+```
+
+Additional exported types cover options, authentication, TLS, cookies, button
+actions, integration overrides and global settings updates. `view.options` is
+typed as `WebViewOptions`; `editable` and `has_*` fields are response-only.
+
+An **activity widget** is content embedded in an activity's touchscreen page.
+A web view widget displays the page in that grid (minimum 3 × 3 cells), whereas
+`view.open()` displays it fullscreen. A widget references its included entity as
+`{"type": "webview", "webview": {"webview_id": "uc_web.main.dashboard"}, ...}`.
+The unused-entity scanner recognizes this reference; there is no widget builder.
+
+WebSocket entity and configuration events update cached objects and invoke the
+existing state-change callbacks. Only explicitly fetched or created web views are
+cached. Reconnecting does not automatically fetch web view definitions; callers
+can choose when to run `await view.refresh()`. The Remote's existing reconnect
+refresh of other state remains in place. The library sends no open, reload or
+clear commands automatically. Core may reload a shown page in response to an
+explicit options update, as defined by its API.
 
 ### IR
 

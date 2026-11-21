@@ -62,6 +62,7 @@ class UpdateType(StrEnum):
     AMBIENT_LIGHT = "AMBIENT_LIGHT"
     CONFIGURATION = "CONFIGURATION"
     MEDIA_PLAYER = "MEDIA_PLAYER"
+    WEBVIEW = "WEBVIEW"
     SOFTWARE = "SOFTWARE"
     NONE = "NONE"
 
@@ -234,6 +235,16 @@ class LocalizationInfo:
 
 
 @dataclass
+class WebViewSettings:
+    """Global web view configuration from /cfg/webview (firmware 2.14.0+)."""
+
+    allow_invalid_certificates: bool = False
+    color_scheme: str = "dark"
+    website_data: str = "keep"
+    buttons: dict = field(default_factory=dict)
+
+
+@dataclass
 class RemoteSettings:
     """Aggregated, structured view of all device configuration settings.
 
@@ -252,6 +263,7 @@ class RemoteSettings:
     bluetooth: BluetoothSettings = field(default_factory=BluetoothSettings)
     profile: ProfileSettings = field(default_factory=ProfileSettings)
     voice: VoiceSettings = field(default_factory=VoiceSettings)
+    webview: WebViewSettings = field(default_factory=WebViewSettings)
     features: list[Feature] = field(default_factory=list)
 
 
@@ -347,10 +359,15 @@ class RemoteState:
 
 @dataclass
 class RemoteFeatureFlags:
-    """Device capability flags detected during ``init()``."""
+    """Device capability flags detected during ``init()``.
+
+    Firmware support describes API capabilities, not current UI availability.
+    Check a web view's state for runtime availability.
+    """
 
     entity_state_update_available: bool = False
     inplace_upgrade_available: bool = False
+    webview_available: bool = False
     external_entity_configuration_available: bool = False
     new_web_configurator: bool = True
     charging_options: list = field(default_factory=list)
@@ -486,6 +503,14 @@ class MediaPlayerAttributesEvent:
 
 
 @dataclass
+class WebViewChangeEvent:
+    """Changed web view fields from an entity_change event; secrets are omitted."""
+
+    entity_id: str
+    new_state: dict
+
+
+@dataclass
 class SoftwareUpdateEvent:
     """Fired when a software update starts, progresses, or completes."""
 
@@ -529,6 +554,7 @@ def parse_ws_message(
     | ActivityStateEvent
     | ActivityEntityLinkEvent
     | MediaPlayerAttributesEvent
+    | WebViewChangeEvent
     | SoftwareUpdateEvent
     | ConfigurationChangeEvent
     | PowerModeEvent
@@ -598,11 +624,20 @@ def parse_ws_message(
 
 def _parse_entity_change(
     msg_data: dict,
-) -> ActivityStateEvent | ActivityEntityLinkEvent | MediaPlayerAttributesEvent | None:
+) -> (
+    ActivityStateEvent
+    | ActivityEntityLinkEvent
+    | MediaPlayerAttributesEvent
+    | WebViewChangeEvent
+    | None
+):
     entity_type = msg_data.get("entity_type")
     entity_id: str = msg_data.get("entity_id", "")
     new_state: dict = msg_data.get("new_state") or {}
     attributes: dict = new_state.get("attributes") or {}
+
+    if entity_type == "webview":
+        return WebViewChangeEvent(entity_id=entity_id, new_state=new_state)
 
     if entity_type == "media_player" and attributes:
         return MediaPlayerAttributesEvent(entity_id=entity_id, attributes=attributes)

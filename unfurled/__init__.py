@@ -13,6 +13,25 @@ from .entities.activity import Activity, ActivityGroup
 from .entities.ir import IR, IRCode, IRCodeset, IRCustomCode, IREmitter
 from .entities.macro import Macro
 from .entities.media_player import MediaPlayerEntity
+from .entities.webview import WebView
+from .entities.webview_options import (
+    WebViewAuth,
+    WebViewButton,
+    WebViewButtonAction,
+    WebViewButtonFunction,
+    WebViewButtonKey,
+    WebViewButtons,
+    WebViewCookie,
+    WebViewCreate,
+    WebViewFunctionAction,
+    WebViewKeyAction,
+    WebViewOptions,
+    WebViewPassAction,
+    WebViewSettingsUpdate,
+    WebViewTLS,
+    WebViewUpdate,
+    WebViewUserOptions,
+)
 from .helpers.discovery import DiscoveredDevice, discover_remotes, discover_remotes_sync
 from .helpers.exceptions import (
     ApiKeyError,
@@ -63,6 +82,7 @@ from .helpers.models import (
     UpdateInfo,
     UpdateType,
     VoiceSettings,
+    WebViewSettings,
     WiFiSettings,
 )
 from .helpers.websocket import DockWebSocketClient, RemoteWebSocketClient, WebSocketClient
@@ -122,6 +142,24 @@ __all__ = [
     "IRCustomCode",
     "Macro",
     "MediaPlayerEntity",
+    "WebView",
+    "WebViewSettings",
+    "WebViewAuth",
+    "WebViewTLS",
+    "WebViewCookie",
+    "WebViewButton",
+    "WebViewButtonAction",
+    "WebViewButtonFunction",
+    "WebViewButtonKey",
+    "WebViewButtons",
+    "WebViewPassAction",
+    "WebViewFunctionAction",
+    "WebViewKeyAction",
+    "WebViewUserOptions",
+    "WebViewOptions",
+    "WebViewCreate",
+    "WebViewUpdate",
+    "WebViewSettingsUpdate",
     # WebSocket
     "WebSocketClient",
     "RemoteWebSocketClient",

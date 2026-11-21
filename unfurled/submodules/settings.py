@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Unpack
 
 from packaging.version import Version
 
+from ..entities.webview_options import WebViewSettingsUpdate
 from ..helpers.models import (
     BluetoothSettings,
     ButtonSettings,
@@ -21,6 +22,7 @@ from ..helpers.models import (
     SoundSettings,
     UpdateType,
     VoiceSettings,
+    WebViewSettings,
 )
 from .base import RemoteModule
 
@@ -54,6 +56,7 @@ class Settings(RemoteModule):
         self.bluetooth = BluetoothSettings()
         self.profile = ProfileSettings()
         self.voice = VoiceSettings()
+        self.webview = WebViewSettings()
         self.features: list[Feature] = []
 
     # ------------------------------------------------------------------
@@ -127,6 +130,9 @@ class Settings(RemoteModule):
 
     def _on_configuration_change(self, event: ConfigurationChangeEvent) -> None:
         state = event.new_state
+
+        if webview := state.get("webview"):
+            self._update_webview(webview)
 
         if display := state.get("display"):
             self.display.auto_brightness = display.get(
@@ -237,6 +243,8 @@ class Settings(RemoteModule):
     async def _fetch_configuration(self) -> None:
         """Fetch and parse the full ``GET /cfg`` response into ``self.settings``."""
         data = await self._api.get_configuration()
+        self.webview = WebViewSettings()
+        self._update_webview(data.get("webview", {}))
 
         # Device
         device = data.get("device", {})
@@ -328,6 +336,25 @@ class Settings(RemoteModule):
             )
             for f in data.get("features", [])
         ]
+
+    def _update_webview(self, data: dict) -> None:
+        """Apply returned settings without resetting omitted fields."""
+        for key in ("allow_invalid_certificates", "color_scheme", "website_data", "buttons"):
+            if key in data:
+                setattr(self.webview, key, data[key])
+
+    async def refresh_webview(self) -> WebViewSettings:
+        """Fetch current global web view settings (firmware 2.14.0+)."""
+        self._update_webview(await self._api.get_webview_settings())
+        return self.webview
+
+    async def update_webview(self, **settings: Unpack[WebViewSettingsUpdate]) -> None:
+        """Patch supplied global settings and cache the server response.
+
+        Button actions and null resets are passed unchanged. Requires admin.
+        """
+        await self._ensure_awake()
+        self._update_webview(await self._api.patch_webview_settings(settings))
 
     async def update_display(
         self,

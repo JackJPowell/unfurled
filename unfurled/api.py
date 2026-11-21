@@ -18,6 +18,7 @@ from urllib.parse import quote, urljoin, urlsplit
 
 import aiohttp
 
+from .entities.webview_options import WebViewCreate, WebViewSettingsUpdate, WebViewUpdate
 from .helpers.exceptions import AuthenticationError, ConnectionError, HTTPError
 from .helpers.models import EntityPowerState, IRFormat, RemoteKind
 
@@ -502,6 +503,82 @@ class CoreAPI:
     async def get_macro(self, entity_id: str) -> dict:
         """GET /macros/{entity_id}."""
         return await self._get(f"macros/{self._path_segment(entity_id)}")
+
+    async def get_webview_count(self, *, kind: str | None = None, q: str | None = None) -> int:
+        """HEAD /webviews - count matching user and/or external web views."""
+        params = {key: value for key, value in {"kind": kind, "q": q}.items() if value is not None}
+        session = await self._ensure_session()
+        try:
+            async with session.head(self._url("webviews"), params=params) as response:
+                await self._raise_on_error(response)
+                return int(response.headers["Pagination-Count"])
+        except aiohttp.ClientError as exc:
+            raise ConnectionError("Request to webviews failed") from exc
+
+    async def get_webviews(
+        self,
+        limit: int = 100,
+        *,
+        page: int | None = None,
+        kind: str | None = None,
+        q: str | None = None,
+        sort: str | None = None,
+        order: str | None = None,
+        lang: str | None = None,
+    ) -> list[dict]:
+        """GET /webviews - paged overviews; use get_webview for full options."""
+        params = {
+            key: value
+            for key, value in {
+                "limit": limit,
+                "page": page,
+                "kind": kind,
+                "q": q,
+                "sort": sort,
+                "order": order,
+                "lang": lang,
+            }.items()
+            if value is not None
+        }
+        return await self._get("webviews", params=params)
+
+    async def post_webview(self, body: WebViewCreate | dict) -> dict:
+        """POST /webviews - create or clone a user-defined web view.
+
+        Core validates options and returns secret-presence flags instead of secrets.
+        """
+        return await self._post("webviews", json=body)
+
+    async def get_webview(self, entity_id: str) -> dict:
+        """GET /webviews/{entity_id} - full definition with redacted secrets."""
+        return await self._get(f"webviews/{self._path_segment(entity_id)}")
+
+    async def patch_webview(self, entity_id: str, body: WebViewUpdate | dict) -> dict:
+        """PATCH /webviews/{entity_id}; preserve omission and explicit null values.
+
+        External web views only allow metadata and options.user overrides.
+        """
+        return await self._patch(f"webviews/{self._path_segment(entity_id)}", json=body)
+
+    async def delete_webview(self, entity_id: str) -> None:
+        """DELETE /webviews/{entity_id}, removing profile and group references."""
+        await self._delete(f"webviews/{self._path_segment(entity_id)}")
+
+    async def delete_webviews(self) -> None:
+        """DELETE /webviews - permanently delete all user-defined web views."""
+        await self._delete("webviews")
+
+    async def get_webview_settings(self, *, default: bool = False) -> dict:
+        """GET /cfg/webview - current or default global web view settings."""
+        return await self._get("cfg/webview", params={"default": str(default).lower()})
+
+    async def patch_webview_settings(self, settings: WebViewSettingsUpdate | dict) -> dict:
+        """PATCH /cfg/webview - change supplied settings (admin scope required)."""
+        return await self._patch("cfg/webview", json=settings)
+
+    async def get_webview_button_presets(self) -> list[dict]:
+        """GET /cfg/webview/button_presets - button actions for this Remote model."""
+        return await self._get("cfg/webview/button_presets")
 
     async def put_entity_command(
         self, entity_id: str, cmd_id: str, params: dict | None = None

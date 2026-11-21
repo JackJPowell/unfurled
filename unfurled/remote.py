@@ -19,6 +19,8 @@ from unfurled.entities.activity import Activity, ActivityGroup
 from unfurled.entities.ir import IR, IRCodeset, IREmitter
 from unfurled.entities.macro import Macro
 from unfurled.entities.media_player import MediaPlayerEntity
+from unfurled.entities.webview import WebView
+from unfurled.entities.webview_options import WebViewCreate
 from unfurled.helpers.exceptions import (
     AuthenticationError,
     HTTPError,
@@ -43,6 +45,7 @@ from unfurled.helpers.models import (
     RemoteState,
     SoftwareUpdateEvent,
     UpdateType,
+    WebViewChangeEvent,
     parse_ws_message,
 )
 from unfurled.helpers.websocket import RemoteWebSocketClient
@@ -135,6 +138,7 @@ class Remote:
 
         # Entities cache (media players referenced by activities)
         self._entities: dict[str, MediaPlayerEntity] = {}
+        self._webviews: dict[str, WebView] = {}
 
     def set_api_key(self, api_key: str) -> None:
         """Update the API key used by REST and WebSocket requests."""
@@ -367,6 +371,10 @@ class Remote:
                 self._on_activity_entity_link(event)
             case MediaPlayerAttributesEvent():
                 self._on_media_player_attrs(event)
+            case WebViewChangeEvent():
+                if webview := self._webviews.get(event.entity_id):
+                    webview._apply_data(event.new_state)
+                self._last_update_type = UpdateType.WEBVIEW
             case SoftwareUpdateEvent():
                 self.system._on_software_update(event)
             case ConfigurationChangeEvent():
@@ -490,9 +498,11 @@ class Remote:
             firmware_version = Version(self.device.sw_version)
             self.system.flags.entity_state_update_available = firmware_version >= Version("2.10.1")
             self.system.flags.inplace_upgrade_available = firmware_version >= Version("2.9.3")
+            self.system.flags.webview_available = firmware_version >= Version("2.14.0")
         except (InvalidVersion, TypeError):
             self.system.flags.entity_state_update_available = False
             self.system.flags.inplace_upgrade_available = False
+            self.system.flags.webview_available = False
 
         if self.device.model_number.upper() != "UCR3":
             return
@@ -681,6 +691,21 @@ class Remote:
     async def get_macro(self, entity_id: str) -> Macro:
         """Fetch a macro by ID."""
         return Macro(await self.api.get_macro(entity_id), self)
+
+    async def get_webview(self, entity_id: str) -> WebView:
+        """Fetch a full web view definition and retain its object for WS updates."""
+        data = await self.api.get_webview(entity_id)
+        if entity_id not in self._webviews:
+            self._webviews[entity_id] = WebView(data, self)
+        else:
+            self._webviews[entity_id]._data = data
+        return self._webviews[entity_id]
+
+    async def create_webview(self, body: WebViewCreate | dict) -> WebView:
+        """Create or clone a user web view; only cache Core's redacted response."""
+        webview = WebView(await self.api.post_webview(body), self)
+        self._webviews[webview.id] = webview
+        return webview
 
     async def _find_macro_by_name(self, name: str) -> Macro | None:
         """Look up a macro by name directly from the remote."""
