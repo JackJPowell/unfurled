@@ -1,6 +1,7 @@
 """Helper functions for scanning activities on the Remote for orphaned or unused entities."""
 
 import logging
+from copy import deepcopy
 from typing import Any
 
 import aiohttp
@@ -22,6 +23,123 @@ class Helpers(RemoteModule):
         await remote.helpers.find_orphaned_entities(remote_url="http://192.168.1.100",
         api_key="your-api-key-here")
     """
+
+    async def remove_activity_entities(
+        self, activity_id: str, entity_ids: list[str], *, only_unused: bool = True
+    ) -> dict:
+        """Remove selected unused entities from one activity by default.
+
+        Usage is checked against the freshly fetched activity. Referenced
+        entities are skipped unless only_unused=False explicitly permits their
+        removal. Forced removal changes sequences and controls; use with care.
+
+        Fetches the latest definition, replaces changed button mappings and page
+        items, then patches sequences, entity_ids and targeted slider settings.
+        Unrelated settings and pages are preserved; configured Remote entities
+        are never deleted. A selected voice-assistant target is also cleared.
+
+        Returns the updated activity, or the fetched definition for a no-op.
+        No power or activity commands are sent. Requests are not transactional:
+        an API error propagates and earlier writes may already have succeeded.
+        Retrying fetches current state and resumes any remaining cleanup.
+        """
+        if isinstance(entity_ids, str) or any(
+            not isinstance(entity_id, str) or not entity_id for entity_id in entity_ids
+        ):
+            raise ValueError("entity_ids must be a list of non-empty entity ID strings")
+        selected = set(entity_ids)
+        activity = await self._api.get_activity(activity_id)
+        if only_unused:
+            selected -= self._extract_used_entity_ids(activity)
+        if not selected:
+            return activity
+
+        options = deepcopy(activity.get("options", {}))
+        changes: dict[str, Any] = {}
+        included = options.get("included_entities", [])
+        if any(entity["entity_id"] in selected for entity in included):
+            # GET includes enriched descriptors; PATCH expects only ID strings.
+            changes["entity_ids"] = [
+                entity["entity_id"] for entity in included if entity["entity_id"] not in selected
+            ]
+
+        sequences = options.get("sequences", {})
+        cleaned_sequences = {
+            name: [
+                step for step in steps if not self._targets_entity(step.get("command"), selected)
+            ]
+            for name, steps in sequences.items()
+        }
+        if cleaned_sequences != sequences:
+            changes["sequences"] = cleaned_sequences
+
+        mappings = options.get("button_mapping", [])
+        cleaned_mappings = deepcopy(mappings)
+        for mapping in cleaned_mappings:
+            for press in ("short_press", "long_press"):
+                if self._targets_entity(mapping.get(press), selected):
+                    del mapping[press]
+
+        page_updates: list[tuple[str, list[dict]]] = []
+        for page in options.get("user_interface", {}).get("pages", []):
+            items = page.get("items", [])
+            cleaned_items = [item for item in items if not self._ui_item_targets(item, selected)]
+            if cleaned_items != items:
+                # Validate the complete plan before performing any writes.
+                if not page.get("page_id"):
+                    raise ValueError("Cannot update an activity UI page without a page_id")
+                page_updates.append((page["page_id"], cleaned_items))
+
+        slider = options.get("touch_slider", {})
+        if self._targets_entity(slider.get("target"), selected):
+            # Disabling clears the target in Core and avoids automatic fallback.
+            changes["touch_slider"] = {"enabled": False}
+        voice = options.get("voice_assistant", {})
+        if self._targets_entity(voice.get("target"), selected):
+            changes["voice_assistant"] = {}
+
+        # Clear references while their entities are still included, then remove
+        # membership and sequence references together in the final PATCH.
+        if cleaned_mappings != mappings:
+            await self._api.post_activity_buttons(activity_id, cleaned_mappings)
+        for page_id, items in page_updates:
+            await self._api.patch_activity_ui_page(activity_id, page_id, {"items": items})
+        if changes:
+            return await self._api.patch_activity(activity_id, {"options": changes})
+        if cleaned_mappings != mappings or page_updates:
+            return await self._api.get_activity(activity_id)
+        return activity
+
+    @staticmethod
+    def _targets_entity(value: Any, entity_ids: set[str]) -> bool:
+        """Match an entity reference, without inspecting arbitrary command params."""
+        return isinstance(value, dict) and value.get("entity_id") in entity_ids
+
+    @classmethod
+    def _ui_item_targets(cls, item: dict, entity_ids: set[str]) -> bool:
+        """Recognize entity-backed widgets and command buttons."""
+        return bool(cls._ui_item_entity_ids(item) & entity_ids)
+
+    @staticmethod
+    def _ui_item_entity_ids(item: dict) -> set[str]:
+        """Share widget reference rules between usage detection and removal."""
+        used: set[str] = set()
+        command = item.get("command")
+        if isinstance(command, dict) and command.get("entity_id"):
+            used.add(command["entity_id"])
+        if item.get("media_player_id"):
+            used.add(item["media_player_id"])
+        for field, id_key in (
+            ("sensor", "sensor_id"),
+            ("select", "select_id"),
+            ("number", "number_id"),
+            ("slider", "entity_id"),
+            ("webview", "webview_id"),
+        ):
+            widget = item.get(field)
+            if isinstance(widget, dict) and widget.get(id_key):
+                used.add(widget[id_key])
+        return used
 
     async def find_orphaned_entities(
         self,
@@ -114,13 +232,20 @@ class Helpers(RemoteModule):
     def _extract_used_entity_ids(self, activity: dict[str, Any]) -> set[str]:
         """
         Extract all entity IDs that are actively used in an activity's sequences,
-        button_mapping, and user_interface.
+        button_mapping, user_interface, touch slider and voice-assistant targets.
 
         :param activity: Full activity dict from GET /api/activities/{id}
         :return: Set of entity_id strings that are referenced
         """
         used: set[str] = set()
         options = activity.get("options", {})
+
+        # A configured target remains a reference even if its control is disabled.
+        for field in ("touch_slider", "voice_assistant"):
+            config = options.get(field) or {}
+            target = config.get("target")
+            if isinstance(target, dict) and target.get("entity_id"):
+                used.add(target["entity_id"])
 
         # sequences: on/off lists of steps; each step may have command.entity_id
         sequences = options.get("sequences", {})
@@ -143,28 +268,7 @@ class Helpers(RemoteModule):
         ui = options.get("user_interface", {})
         for page in ui.get("pages", []):
             for item in page.get("items", []):
-                # Direct command entity
-                cmd = item.get("command", {})
-                if isinstance(cmd, dict) and cmd.get("entity_id"):
-                    used.add(cmd["entity_id"])
-                # media_player_id
-                if item.get("media_player_id"):
-                    used.add(item["media_player_id"])
-                # sensor_id
-                sensor = item.get("sensor", {})
-                if isinstance(sensor, dict) and sensor.get("sensor_id"):
-                    used.add(sensor["sensor_id"])
-                # select_id
-                select = item.get("select", {})
-                if isinstance(select, dict) and select.get("select_id"):
-                    used.add(select["select_id"])
-                # number widgets reference number_id; slider widgets use entity_id
-                number = item.get("number", {})
-                if isinstance(number, dict) and number.get("number_id"):
-                    used.add(number["number_id"])
-                slider = item.get("slider", {})
-                if isinstance(slider, dict) and slider.get("entity_id"):
-                    used.add(slider["entity_id"])
+                used.update(self._ui_item_entity_ids(item))
 
         return used
 
@@ -175,8 +279,9 @@ class Helpers(RemoteModule):
         Find entities included in activities that are never actually used.
 
         An entity is "unused" when it appears in ``included_entities`` but has no
-        reference in sequences, button_mapping, or user_interface (commands, media
-        player widgets, sensor widgets, select widgets, number widgets, or sliders).
+        reference in sequences, button_mapping, touch_slider, voice_assistant,
+        or user_interface (commands, media player, sensor, select, number, slider
+        and web view widgets).
 
         Authentication can be done via PIN (Basic Auth) or API key (Bearer token).
         One of ``pin`` or ``api_key`` must be provided.

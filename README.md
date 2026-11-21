@@ -138,6 +138,50 @@ if remote.system.flags.entity_state_update_available:
 await remote.turn_off_all_activities()
 ```
 
+### Activity entity cleanup
+
+Remove selected unused entities from one activity without deleting the
+configured entities from the Remote. `only_unused=True` is the default:
+
+```python
+updated_activity = await remote.helpers.remove_activity_entities(
+    "activity-id",
+    ["hass.main.media_player.old_tv", "hass.main.sensor.old_temperature"],
+)
+```
+
+The helper fetches the latest activity and skips any selected entity referenced
+by on/off sequences, button press actions, UI widgets, the Remote 3 touch slider,
+or the activity voice assistant. Touch-slider targets count as references even
+when disabled. Unavailable entities still count as used if referenced.
+`find_unused_activity_entities()` uses the same reference detection, including
+number, slider and webview widgets.
+
+To explicitly remove used entities and their references:
+
+```python
+updated_activity = await remote.helpers.remove_activity_entities(
+    "activity-id", ["hass.main.media_player.old_tv"], only_unused=False,
+)
+```
+
+Use this override with caution: it removes matching sequence steps, button
+press actions and UI items, disables a matching touch slider, and clears a
+matching activity voice-assistant target. Unrelated settings and empty pages
+remain in place.
+
+The helper returns the updated activity dictionary, or the fetched activity if
+no changes are needed. It sends no power or activity commands and never calls
+the configured-entity deletion APIs. Only IDs explicitly passed are removed;
+other orphaned entities remain untouched.
+
+Default cleanup only updates the included entity IDs. Forced removal can require
+separate writes for button mappings, UI pages and activity options, so it is not
+atomic: an error propagates and earlier
+writes may already have succeeded. Retry to fetch current state and finish the
+remaining cleanup. Avoid editing the same activity concurrently from another
+client. Local cached `Activity` objects are not automatically refreshed.
+
 ### Settings
 
 Configuration is grouped under `remote.settings`:

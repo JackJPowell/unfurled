@@ -466,6 +466,22 @@ class CoreAPI:
         """GET /activities/{id}/buttons"""
         return await self._get(f"activities/{self._path_segment(activity_id)}/buttons")
 
+    async def post_activity_buttons(self, activity_id: str, mappings: list[dict]) -> list[dict]:
+        """POST /activities/{id}/buttons - replace all physical button mappings.
+
+        Unlike PATCH, omitted press actions are removed rather than retained.
+        """
+        return await self._post(
+            f"activities/{self._path_segment(activity_id)}/buttons", json=mappings
+        )
+
+    async def patch_activity_ui_page(self, activity_id: str, page_id: str, body: dict) -> dict:
+        """PATCH /activities/{id}/ui/pages/{page_id} - update supplied page fields."""
+        return await self._patch(
+            f"activities/{self._path_segment(activity_id)}/ui/pages/{self._path_segment(page_id)}",
+            json=body,
+        )
+
     async def get_activity_button(self, activity_id: str, button_id: str) -> dict:
         """GET /activities/{id}/buttons/{button_id}"""
         return await self._get(

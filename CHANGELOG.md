@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented in this file.
 
+## [Unreleased]
+
+- Added `remote.helpers.remove_activity_entities()` with `only_unused=True` by
+  default. Explicitly setting it to `False` also removes activity references.
+  Unrelated settings and configured Remote entities are preserved.
+- Extended unused-entity detection to include Remote 3 touch-slider targets,
+  activity voice-assistant targets and webview widgets.
+
 ## [0.6.6]
 
 - Fixed number and slider widgets being ignored when scanning activities for unused entities, which caused referenced entities to be incorrectly reported as unused.
