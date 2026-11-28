@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import datetime
 from unittest.mock import AsyncMock
 
@@ -9,6 +10,7 @@ import pytest
 
 from unfurled.entities.activity import Activity
 from unfurled.entities.media_player import MediaPlayerEntity
+from unfurled.helpers.models import UpdateType
 
 
 @pytest.fixture
@@ -19,6 +21,102 @@ def player(remote):
 
 
 class TestMediaPlayerState:
+    @pytest.mark.parametrize("key", ["media_duration", "media_position"])
+    @pytest.mark.parametrize(
+        ("value", "expected"),
+        [
+            (0, 0.0),
+            (120, 120.0),
+            (12.5, 12.5),
+            ("120", 120.0),
+            (" 12.5 ", 12.5),
+            ("", 0.0),
+            (" ", 0.0),
+            (None, 0.0),
+            ("unknown", 0.0),
+            (-1, 0.0),
+            ("-1", 0.0),
+            (True, 0.0),
+            (False, 0.0),
+            (float("nan"), 0.0),
+            (float("inf"), 0.0),
+            (float("-inf"), 0.0),
+            ("NaN", 0.0),
+            ("inf", 0.0),
+            ("1e999", 0.0),
+            (10**1000, 0.0),
+            ([], 0.0),
+            ({}, 0.0),
+        ],
+    )
+    def test_progress_is_normalized(self, player, key, value, expected):
+        player.update_attributes({key: 42})
+
+        changed = player.update_attributes({key: value, "media_title": "TV Audio"})
+
+        assert getattr(player, key) == expected
+        assert isinstance(getattr(player, key), float)
+        assert changed[key] == expected
+        assert player.media_title == "TV Audio"
+
+    def test_partial_update_preserves_progress(self, player):
+        player.update_attributes({"media_duration": "120.5", "media_position": "12.5"})
+
+        changed = player.update_attributes({"state": "PLAYING"})
+
+        assert player.media_duration == 120.5
+        assert player.media_position == 12.5
+        assert "media_duration" not in changed
+        assert "media_position" not in changed
+
+    async def test_api_response_normalizes_progress(self, player, remote):
+        remote.api.get_entity = AsyncMock(
+            return_value={
+                "attributes": {
+                    "state": "PLAYING",
+                    "media_title": "TV Audio",
+                    "media_duration": "",
+                    "media_position": "0",
+                }
+            }
+        )
+
+        await player.update_data()
+
+        assert player.media_duration == 0.0
+        assert player.media_position == 0.0
+        assert player.media_title == "TV Audio"
+        assert player.state == "PLAYING"
+
+    async def test_websocket_update_clears_unknown_progress(self, player, remote):
+        remote._entities[player.id] = player
+        player.update_attributes({"media_duration": 120, "media_position": 42})
+
+        await remote._handle_ws_message(
+            json.dumps(
+                {
+                    "msg": "entity_change",
+                    "msg_data": {
+                        "entity_type": "media_player",
+                        "entity_id": player.id,
+                        "new_state": {
+                            "attributes": {
+                                "state": "PLAYING",
+                                "media_title": "TV Audio",
+                                "media_duration": "",
+                                "media_position": None,
+                            }
+                        },
+                    },
+                }
+            )
+        )
+
+        assert player.media_duration == 0.0
+        assert player.media_position == 0.0
+        assert player.media_title == "TV Audio"
+        assert remote.last_update_type == UpdateType.MEDIA_PLAYER
+
     def test_update_attributes_updates_public_properties(self, player: MediaPlayerEntity):
         updated_at = datetime(2026, 8, 14, 12, 0)
 

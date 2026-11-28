@@ -2,6 +2,10 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.6.7]
+
+- Normalize media duration and position from API responses and WebSocket updates to finite, nonnegative seconds. Numeric strings retain fractional seconds; empty, null, and invalid values become zero, while omitted fields preserve cached progress. This prevents string durations from interrupting Home Assistant media player updates (hass-unfoldedcircle#191).
+
 ## [0.6.6]
 
 - Fixed number and slider widgets being ignored when scanning activities for unused entities, which caused referenced entities to be incorrectly reported as unused.
