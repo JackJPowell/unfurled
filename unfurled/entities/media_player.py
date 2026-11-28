@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import math
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
@@ -11,6 +12,17 @@ if TYPE_CHECKING:
     from .activity import Activity
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _media_seconds(value: Any) -> float:
+    """Normalize remote progress values to finite, nonnegative seconds."""
+    if isinstance(value, bool) or not isinstance(value, (int, float, str)):
+        return 0.0
+    try:
+        seconds = float(value)
+    except (ValueError, OverflowError):
+        return 0.0
+    return seconds if math.isfinite(seconds) and seconds >= 0 else 0.0
 
 
 class MediaPlayerEntity:
@@ -29,8 +41,8 @@ class MediaPlayerEntity:
         self._media_artist = ""
         self._media_album = ""
         self._media_type = ""
-        self._media_duration = 0
-        self._media_position = 0
+        self._media_duration = 0.0
+        self._media_position = 0.0
         self._media_position_updated_at: datetime | None = None
         self._muted = False
         self._volume = 0.0
@@ -103,13 +115,13 @@ class MediaPlayerEntity:
         return self._media_type
 
     @property
-    def media_duration(self) -> int:
-        """Duration of the current track in seconds."""
+    def media_duration(self) -> float:
+        """Duration in seconds, or zero when unknown or invalid."""
         return self._media_duration
 
     @property
-    def media_position(self) -> int:
-        """Current playback position in seconds."""
+    def media_position(self) -> float:
+        """Playback position in seconds, or zero when unknown or invalid."""
         return self._media_position
 
     @property
@@ -159,11 +171,16 @@ class MediaPlayerEntity:
         _set("media_image_url", "media_image_url")
         _set("current_source", "source")
         _set("source_list", "source_list")
-        _set("media_duration", "media_duration")
+        # Omitted fields are partial updates; explicit null/invalid values clear
+        # stale progress (for example when switching from a track to TV audio).
+        for key in ("media_duration", "media_position"):
+            if key in attributes:
+                seconds = _media_seconds(attributes[key])
+                setattr(self, f"_{key}", seconds)
+                changed[key] = seconds
         _set("media_artist", "media_artist")
         _set("media_album", "media_album")
         _set("media_title", "media_title")
-        _set("media_position", "media_position")
         _set("media_position_updated_at", "media_position_updated_at")
         _set("media_type", "media_type")
         _set("volume", "volume", float)
